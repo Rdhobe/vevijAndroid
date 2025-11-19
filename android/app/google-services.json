@@ -1,0 +1,86 @@
+{
+  "project_info": {
+    "project_number": "566517432772",
+    "project_id": "vevij-16299",
+    "storage_bucket": "vevij-16299.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:566517432772:android:c3d22a4f47b2faaf206491",
+        "android_client_info": {
+          "package_name": "com.company.vevij"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSkTlsg_jbMYmZcOt2fktGWco2Ei4zrQo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:566517432772:android:b6b0b52c56819a55206491",
+        "android_client_info": {
+          "package_name": "com.example.vevij"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSkTlsg_jbMYmZcOt2fktGWco2Ei4zrQo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:566517432772:android:9ef45b7a3e0166d8206491",
+        "android_client_info": {
+          "package_name": "com.example.vevijdesigner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSkTlsg_jbMYmZcOt2fktGWco2Ei4zrQo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:566517432772:android:08e519c65207f89b206491",
+        "android_client_info": {
+          "package_name": "com.vevijerp.vevij"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSkTlsg_jbMYmZcOt2fktGWco2Ei4zrQo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
