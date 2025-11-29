@@ -10,6 +10,7 @@ import 'package:vevij/components/pages/atttendance/lateloginapprovalpage.dart';
 import 'package:vevij/components/pages/employee management/employee_request_page.dart';
 import 'package:vevij/components/pages/employee management/admin_request_page.dart';
 import 'package:vevij/components/pages/employee management/admin_hr_location_montering.dart';
+import 'package:vevij/components/pages/employee management/employee_overview_page.dart';
 import 'package:vevij/components/pages/task management/team_list_page.dart';
 import 'package:vevij/components/pages/salary%20management/salary_management.dart';
 import 'package:vevij/components/pages/salary%20management/admin_salary_management.dart';
@@ -17,11 +18,17 @@ import 'package:vevij/components/pages/project management/project_view_page.dart
 import 'package:vevij/components/pages/project management/project_management.dart';
 import 'package:vevij/components/pages/project management/project_report.dart';
 import 'package:vevij/components/chat/chat_page.dart';
+
 class MenuPage extends StatefulWidget {
   final String userId;
   final String userName;
   final Map<String, dynamic> employeeData;
-  const MenuPage({super.key, required this.userId, required this.userName, required this.employeeData});
+  const MenuPage({
+    super.key,
+    required this.userId,
+    required this.userName,
+    required this.employeeData,
+  });
 
   @override
   State<MenuPage> createState() => _MenuPageState();
@@ -39,147 +46,240 @@ class _MenuPageState extends State<MenuPage> {
 
   Future<void> _loadMenuItems() async {
     setState(() => _isLoading = true);
-    
+
     final items = <MenuItem>[];
 
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.manageAttendance)) {
-      items.add(MenuItem(
-        title: 'Attendance overview',
-        icon: Icons.access_time,
-        color: Colors.blue,
-        page: EmployeeAttendancePage( 
-          employeeId: widget.userId,
-          employeeName: widget.userName,
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.manageAttendance,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Attendance overview',
+          icon: Icons.access_time,
+          color: Colors.blue,
+          page: EmployeeAttendancePage(
+            employeeId: widget.userId,
+            employeeName: widget.userName,
+          ),
+          requiredPermission: EmployeePermission.manageAttendance,
         ),
-        requiredPermission: EmployeePermission.manageAttendance,
-      ));
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.manageAttendance)) {
-      items.add(MenuItem(
-        title: 'Attendance Report',
-        icon: Icons.access_time,
-        color: Colors.orange,
-        page: AttendanceReportPage(),
-        requiredPermission: EmployeePermission.manageAttendance,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.manageAttendance,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Attendance Report',
+          icon: Icons.access_time,
+          color: Colors.orange,
+          page: AttendanceReportPage(),
+          requiredPermission: EmployeePermission.manageAttendance,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.manageAttendance)) {
-      items.add(MenuItem(
-        title: 'Attendance',
-        icon: Icons.access_time,
-        color: Colors.green,
-        page: const MarkAttendancePage(),
-        requiredPermission: EmployeePermission.manageAttendance,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.manageAttendance,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Attendance',
+          icon: Icons.access_time,
+          color: Colors.green,
+          page: const MarkAttendancePage(),
+          requiredPermission: EmployeePermission.manageAttendance,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.adminManageAttendance)) {
-      items.add(MenuItem(
-        title: 'Attendance Report(Admin)',
-        icon: Icons.access_time,
-        color: Colors.purple,
-        page: const AdminAttendanceReportPage(),
-        requiredPermission: EmployeePermission.adminManageAttendance,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.adminManageAttendance,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Attendance Report(Admin)',
+          icon: Icons.access_time,
+          color: Colors.purple,
+          page: const AdminAttendanceReportPage(),
+          requiredPermission: EmployeePermission.adminManageAttendance,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.adminManageAttendance)) {
-      items.add(MenuItem(
-        title: 'Late Login Approval(Admin)',
-        icon: Icons.access_time,
-        color: Colors.purple,
-        page: const LateLoginApprovalPage(),
-        requiredPermission: EmployeePermission.adminManageAttendance,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.adminManageAttendance,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Late Login Approval(Admin)',
+          icon: Icons.access_time,
+          color: Colors.purple,
+          page: const LateLoginApprovalPage(),
+          requiredPermission: EmployeePermission.adminManageAttendance,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.managePermissions)) {
-      items.add(MenuItem(
-        title: 'Permissions',
-        icon: Icons.admin_panel_settings,
-        color: Colors.red,
-        page: PermissionManagementPage(),
-        requiredPermission: EmployeePermission.managePermissions,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.managePermissions,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Permissions',
+          icon: Icons.admin_panel_settings,
+          color: Colors.red,
+          page: PermissionManagementPage(),
+          requiredPermission: EmployeePermission.managePermissions,
+        ),
+      );
     }
 
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.monitorLocations)) {
-      items.add(MenuItem(
-        title: 'location Monitoring',
-        icon: Icons.location_on,
-        color: Colors.teal,
-        page: HRLocationMonitorPage(),
-        requiredPermission: EmployeePermission.monitorLocations,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.monitorLocations,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'location Monitoring',
+          icon: Icons.location_on,
+          color: Colors.teal,
+          page: HRLocationMonitorPage(),
+          requiredPermission: EmployeePermission.monitorLocations,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.adminManageLeaves)) {
-      items.add(MenuItem(
-        title: 'Employee Requests - Admin',
-        icon: Icons.request_page,
-        color: Colors.greenAccent,
-        page: AdminRequestManagementPage(),
-        requiredPermission: EmployeePermission.adminManageLeaves,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.manageEmployees,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Manage Employee',
+          icon: Icons.people,
+          color: Colors.pinkAccent,
+          page: EmployeeOverviewPage(),
+          requiredPermission: EmployeePermission.manageEmployees,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.tasksManagement)) {
-      items.add(MenuItem(
-        title: 'Tasks management',
-        icon: Icons.task,
-        color: Colors.orangeAccent,
-        page: TeamListPage(),
-        requiredPermission: EmployeePermission.tasksManagement,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.adminManageLeaves,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Employee Requests - Admin',
+          icon: Icons.request_page,
+          color: Colors.greenAccent,
+          page: AdminRequestManagementPage(),
+          requiredPermission: EmployeePermission.adminManageLeaves,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.viewSalary)) {
-      items.add(MenuItem(
-        title: 'Employee Salary',
-        icon: Icons.attach_money,
-        color: Colors.brown,
-        page: EmployeeSalaryPage(userId: widget.userId),
-        requiredPermission: EmployeePermission.viewSalary,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.tasksManagement,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Tasks management',
+          icon: Icons.task,
+          color: Colors.orangeAccent,
+          page: TeamListPage(),
+          requiredPermission: EmployeePermission.tasksManagement,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.adminSalary)) {
-      items.add(MenuItem(
-        title: 'admin salary management',
-        icon: Icons.manage_accounts_outlined,
-        color: Colors.cyan,
-        page: AdminSalaryManagementPage(),
-        requiredPermission: EmployeePermission.adminSalary,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.viewSalary,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Employee Salary',
+          icon: Icons.attach_money,
+          color: Colors.brown,
+          page: EmployeeSalaryPage(userId: widget.userId),
+          requiredPermission: EmployeePermission.viewSalary,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.viewProjects)) {
-      items.add(MenuItem(
-        title: 'Projects',
-        icon: Icons.folder_open,
-        color: Colors.purpleAccent,
-        page: ProjectViewPage(),
-        requiredPermission: EmployeePermission.viewProjects,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.adminSalary,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'admin salary management',
+          icon: Icons.manage_accounts_outlined,
+          color: Colors.cyan,
+          page: AdminSalaryManagementPage(),
+          requiredPermission: EmployeePermission.adminSalary,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.manageProjects)) {
-      items.add(MenuItem(
-        title: 'Projects Management',
-        icon: Icons.settings_applications,
-        color: Colors.purpleAccent,
-        page: ProjectManagementPage(),
-        requiredPermission: EmployeePermission.manageProjects,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.viewProjects,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Projects',
+          icon: Icons.folder_open,
+          color: Colors.purpleAccent,
+          page: ProjectViewPage(),
+          requiredPermission: EmployeePermission.viewProjects,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.reportProjects)) {
-      items.add(MenuItem(
-        title: 'Project Reports',
-        icon: Icons.folder_open,
-        color: Colors.redAccent,
-        page: ProjectReportPage(),
-        requiredPermission: EmployeePermission.reportProjects,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.manageProjects,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Projects Management',
+          icon: Icons.settings_applications,
+          color: Colors.purpleAccent,
+          page: ProjectManagementPage(),
+          requiredPermission: EmployeePermission.manageProjects,
+        ),
+      );
     }
-    if (await EmployeePermissionChecker.can(widget.userId, EmployeePermission.manageLeaves)) {
-      items.add(MenuItem(
-        title: 'Employee Requests',
-        icon: Icons.request_page,
-        color: Colors.blueAccent,
-        page: EmployeeRequestsPage(userId: widget.userId, userName: widget.userName, employeeData: widget.employeeData,),
-        requiredPermission: EmployeePermission.manageLeaves,
-      ));
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.reportProjects,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Project Reports',
+          icon: Icons.folder_open,
+          color: Colors.redAccent,
+          page: ProjectReportPage(),
+          requiredPermission: EmployeePermission.reportProjects,
+        ),
+      );
+    }
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.manageLeaves,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Employee Requests',
+          icon: Icons.request_page,
+          color: Colors.blueAccent,
+          page: EmployeeRequestsPage(
+            userId: widget.userId,
+            userName: widget.userName,
+            employeeData: widget.employeeData,
+          ),
+          requiredPermission: EmployeePermission.manageLeaves,
+        ),
+      );
     }
 
     setState(() {
@@ -189,10 +289,7 @@ class _MenuPageState extends State<MenuPage> {
   }
 
   void _navigateToPage(Widget page) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => page),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => page));
   }
 
   @override
@@ -209,7 +306,10 @@ class _MenuPageState extends State<MenuPage> {
           ),
           IconButton(
             icon: const Icon(Icons.chat),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatPage())),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ChatPage()),
+            ),
             tooltip: 'Chat',
           ),
         ],
@@ -217,8 +317,8 @@ class _MenuPageState extends State<MenuPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _menuItems.isEmpty
-              ? _buildEmptyState()
-              : _buildMenuGrid(),
+          ? _buildEmptyState()
+          : _buildMenuGrid(),
     );
   }
 
@@ -254,7 +354,10 @@ class _MenuPageState extends State<MenuPage> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [item.color.withOpacity(0.1), item.color.withOpacity(0.3)],
+              colors: [
+                item.color.withOpacity(0.1),
+                item.color.withOpacity(0.3),
+              ],
             ),
           ),
           child: Column(
@@ -282,11 +385,17 @@ class _MenuPageState extends State<MenuPage> {
               const SizedBox(height: 4),
               if (item.requiredPermission != null)
                 FutureBuilder<bool>(
-                  future: EmployeePermissionChecker.can(widget.userId, item.requiredPermission!),
+                  future: EmployeePermissionChecker.can(
+                    widget.userId,
+                    item.requiredPermission!,
+                  ),
                   builder: (context, snapshot) {
                     if (snapshot.hasData && snapshot.data!) {
                       return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.green.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(12),
