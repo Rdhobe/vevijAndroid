@@ -7,17 +7,20 @@ import 'package:vevij/services/auth_service.dart';
 import 'package:vevij/components/pages/task management/report_page.dart';
 import 'package:vevij/components/pages/task management/create_task_page.dart';
 import 'package:vevij/components/pages/task management/task_details_page.dart';
+import 'package:vevij/components/widgets/task_card_modern.dart';
 
 class TeamTasksPage extends StatefulWidget {
   final String teamId;
   final String teamName;
   final TeamRole userRole;
+  final bool isSuperAdminOrHr;
 
   const TeamTasksPage({
     super.key,
     required this.teamId,
     required this.teamName,
     required this.userRole,
+    this.isSuperAdminOrHr = false,
   });
 
   @override
@@ -29,16 +32,17 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
 
   bool get _canCreateTask {
     return widget.userRole == TeamRole.manager ||
-           widget.userRole == TeamRole.admin ||
-           widget.userRole == TeamRole.hr;
+        widget.userRole == TeamRole.admin ||
+        widget.userRole == TeamRole.hr ||
+        widget.isSuperAdminOrHr;
   }
 
   bool get _canViewReports {
-    return widget.userRole != TeamRole.member;
+    return widget.userRole != TeamRole.member || widget.isSuperAdminOrHr;
   }
 
   bool get _canViewAllTasks {
-    return widget.userRole != TeamRole.member;
+    return widget.userRole != TeamRole.member || widget.isSuperAdminOrHr;
   }
 
   @override
@@ -66,7 +70,7 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
         ],
       ),
       body: _buildTaskList(),
-      floatingActionButton: _canCreateTask ? _buildFAB() : null,
+      
     );
   }
 
@@ -77,7 +81,7 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
         print('StreamBuilder state: ${snapshot.connectionState}');
         print('StreamBuilder hasError: ${snapshot.hasError}');
         print('StreamBuilder hasData: ${snapshot.hasData}');
-        
+
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -94,9 +98,9 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
 
         final tasks = snapshot.data!;
         print('Loaded ${tasks.length} tasks for team ${widget.teamId}');
-        
-        final filteredTasks = _selectedFilter == null 
-            ? tasks 
+
+        final filteredTasks = _selectedFilter == null
+            ? tasks
             : tasks.where((t) => t.status == _selectedFilter).toList();
 
         return Column(
@@ -110,9 +114,23 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
                       itemCount: filteredTasks.length,
                       itemBuilder: (context, index) {
                         final task = filteredTasks[index];
-                        return _TaskCard(
+                        return TaskCardModern(
                           task: task,
-                          userRole: widget.userRole,
+                          showActions:
+                              widget.isSuperAdminOrHr ||
+                              widget.userRole == TeamRole.manager ||
+                              widget.userRole == TeamRole.admin,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TaskDetailsPage(
+                                  task: task,
+                                  userRole: widget.userRole,
+                                ),
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
@@ -125,7 +143,7 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
 
   Stream<List<TaskModel>> _getTasksStream() {
     final taskService = Provider.of<TaskService>(context, listen: false);
-    
+
     if (_canViewAllTasks) {
       print('Loading ALL tasks for team: ${widget.teamId}');
       return taskService.streamTasksForTeam(widget.teamId);
@@ -133,20 +151,23 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
       // For members, filter tasks assigned to them
       final authService = Provider.of<AuthService>(context, listen: false);
       final currentUserId = authService.currentUser?.uid;
-      
-      print('Loading USER tasks for team: ${widget.teamId}, user: $currentUserId');
-      
+
+      print(
+        'Loading USER tasks for team: ${widget.teamId}, user: $currentUserId',
+      );
+
       if (currentUserId == null) {
         print('No current user ID found');
         return Stream.value([]);
       }
 
-      return taskService.streamTasksForTeam(widget.teamId)
-          .map((tasks) {
-            final userTasks = tasks.where((task) => task.assignedTo.contains(currentUserId)).toList();
-            print('Filtered ${userTasks.length} tasks for user $currentUserId');
-            return userTasks;
-          });
+      return taskService.streamTasksForTeam(widget.teamId).map((tasks) {
+        final userTasks = tasks
+            .where((task) => task.assignedTo.contains(currentUserId))
+            .toList();
+        print('Filtered ${userTasks.length} tasks for user $currentUserId');
+        return userTasks;
+      });
     }
   }
 
@@ -205,20 +226,23 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
               });
             },
           ),
-          ...TaskStatus.values.map((status) {
-            final count = tasks.where((t) => t.status == status).length;
-            if (count == 0) return const SizedBox.shrink();
-            
-            return FilterChip(
-              label: Text('${_getStatusText(status)} ($count)'),
-              selected: _selectedFilter == status,
-              onSelected: (selected) {
-                setState(() {
-                  _selectedFilter = selected ? status : null;
-                });
-              },
-            );
-          }).where((chip) => chip != const SizedBox.shrink()).toList(),
+          ...TaskStatus.values
+              .map((status) {
+                final count = tasks.where((t) => t.status == status).length;
+                if (count == 0) return const SizedBox.shrink();
+
+                return FilterChip(
+                  label: Text('${_getStatusText(status)} ($count)'),
+                  selected: _selectedFilter == status,
+                  onSelected: (selected) {
+                    setState(() {
+                      _selectedFilter = selected ? status : null;
+                    });
+                  },
+                );
+              })
+              .where((chip) => chip != const SizedBox.shrink())
+              .toList(),
         ],
       ),
     );
@@ -231,23 +255,17 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.task,
-              size: 64,
-              color: Colors.grey[300],
-            ),
+            Icon(Icons.task, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
             Text(
-              _canCreateTask 
-                ? 'No Tasks Created'
-                : 'No Tasks Assigned',
+              _canCreateTask ? 'No Tasks Created' : 'No Tasks Assigned',
               style: const TextStyle(fontSize: 18, color: Colors.grey),
             ),
             const SizedBox(height: 8),
             Text(
               _canCreateTask
-                ? 'Create the first task for this team'
-                : 'You have no assigned tasks in this team',
+                  ? 'Create the first task for this team'
+                  : 'You have no assigned tasks in this team',
               style: const TextStyle(color: Colors.grey),
               textAlign: TextAlign.center,
             ),
@@ -258,9 +276,8 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => CreateTaskPage(
-                        initialTeamId: widget.teamId,
-                      ),
+                      builder: (context) =>
+                          CreateTaskPage(initialTeamId: widget.teamId),
                     ),
                   );
                 },
@@ -274,22 +291,7 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
     );
   }
 
-  Widget _buildFAB() {
-    return FloatingActionButton(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CreateTaskPage(
-              initialTeamId: widget.teamId,
-            ),
-          ),
-        );
-      },
-      child: const Icon(Icons.add),
-    );
-  }
-
+  
   String _getStatusText(TaskStatus status) {
     switch (status) {
       case TaskStatus.pending:
@@ -301,142 +303,5 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
       case TaskStatus.cancelled:
         return 'Cancelled';
     }
-  }
-}
-
-class _TaskCard extends StatelessWidget {
-  final TaskModel task;
-  final TeamRole userRole;
-
-  const _TaskCard({
-    required this.task,
-    required this.userRole,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isOverdue = DateTime.now().isAfter(task.dueDate) && 
-                     task.status != TaskStatus.completed;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      child: ListTile(
-        leading: Container(
-          width: 8,
-          height: 40,
-          decoration: BoxDecoration(
-            color: _getStatusColor(task.status),
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        title: Text(
-          task.title,
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-            decoration: task.status == TaskStatus.completed 
-                ? TextDecoration.lineThrough 
-                : null,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              task.description.isEmpty ? 'No description' : task.description,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Chip(
-                  label: Text(
-                    _getStatusText(task.status),
-                    style: const TextStyle(fontSize: 10, color: Colors.white),
-                  ),
-                  backgroundColor: _getStatusColor(task.status),
-                ),
-                const SizedBox(width: 8),
-                if (isOverdue)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'OVERDUE',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.calendar_today, size: 12, color: Colors.grey.shade600),
-                const SizedBox(width: 4),
-                Text(
-                  'Due: ${_formatDate(task.dueDate)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => TaskDetailsPage(
-                task: task,
-                userRole: userRole,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Color _getStatusColor(TaskStatus status) {
-    switch (status) {
-      case TaskStatus.pending:
-        return Colors.orange;
-      case TaskStatus.inProgress:
-        return Colors.blue;
-      case TaskStatus.completed:
-        return Colors.green;
-      case TaskStatus.cancelled:
-        return Colors.red;
-    }
-  }
-
-  String _getStatusText(TaskStatus status) {
-    switch (status) {
-      case TaskStatus.pending:
-        return 'Pending';
-      case TaskStatus.inProgress:
-        return 'In Progress';
-      case TaskStatus.completed:
-        return 'Completed';
-      case TaskStatus.cancelled:
-        return 'Cancelled';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
   }
 }

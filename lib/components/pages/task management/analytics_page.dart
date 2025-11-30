@@ -144,7 +144,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
+      crossAxisCount: 4,
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
       childAspectRatio: 1.2,
@@ -663,24 +663,24 @@ class _AnalyticsCard extends StatelessWidget {
     return Card(
       color: color.withOpacity(0.1),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(5.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 32, color: color),
-            const SizedBox(height: 8),
+            Icon(icon, size: 10, color: color),
+            const SizedBox(height: 4),
             Text(
               value,
               style: TextStyle(
-                fontSize: 20,
+                fontSize: 10,
                 fontWeight: FontWeight.bold,
                 color: color,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               title,
-              style: const TextStyle(fontSize: 12),
+              style: const TextStyle(fontSize: 8),
               textAlign: TextAlign.center,
             ),
           ],

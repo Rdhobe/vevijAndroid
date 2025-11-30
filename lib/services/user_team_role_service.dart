@@ -8,11 +8,6 @@ class UserTeamRoleService {
 
   Future<TeamRole> getUserRoleInTeam(String teamId, String userId) async {
     try {
-      // Check if user is global HR first
-      if (await _isGlobalHr(userId)) {
-        return TeamRole.hr;
-      }
-
       final teamDoc = await _firestore.collection('teams').doc(teamId).get();
       if (!teamDoc.exists) {
         throw Exception('Team not found');
@@ -22,10 +17,10 @@ class UserTeamRoleService {
       final member = team.members.firstWhere(
         (m) => m.userId == userId,
         orElse: () => TeamMember(
-          userId: '', 
-          addedBy: '', 
-          role: 'none', 
-          joinedAt: DateTime.now()
+          userId: '',
+          addedBy: '',
+          role: 'none',
+          joinedAt: DateTime.now(),
         ),
       );
 
@@ -55,54 +50,101 @@ class UserTeamRoleService {
     try {
       final userDoc = await _firestore.collection('users').doc(userId).get();
       if (!userDoc.exists) return false;
-      
+
       final user = Employee.fromMap(userDoc.data()!);
-      return user.designation.toLowerCase().contains('hr');
+      // Assuming 'designation' field indicates HR or superadmin status
+
+      return user.designation.toLowerCase().contains('hr') ||
+          user.designation.toLowerCase().contains('superadmin');
     } catch (e) {
       print('Error checking HR status: $e');
       return false;
     }
   }
 
+  // Public method to check if user is SuperAdmin or HR
+  Future<bool> isUserSuperAdminOrHr(String userId) async {
+    return _isGlobalHr(userId);
+  }
+
+  // Get all teams for SuperAdmin/HR users
+  Stream<List<UserTeamRole>> getAllTeams() {
+    return _firestore.collection('teams').snapshots().map((snapshot) {
+      final teams = <UserTeamRole>[];
+      for (final doc in snapshot.docs) {
+        final team = TeamModel.fromMap(doc.data());
+        teams.add(
+          UserTeamRole(
+            teamId: doc.id,
+            teamName: team.name,
+            role: TeamRole.hr,
+            joinedAt: team.createdAt,
+          ),
+        );
+      }
+      // Sort by team name
+      teams.sort((a, b) => a.teamName.compareTo(b.teamName));
+      return teams;
+    });
+  }
+
   Stream<List<UserTeamRole>> getUserTeams(String userId) {
-    return _firestore
-        .collection('teams')
-        .snapshots()
-        .asyncMap((snapshot) async {
+    return _firestore.collection('teams').snapshots().asyncMap((
+      snapshot,
+    ) async {
       final teams = <UserTeamRole>[];
       final isHr = await _isGlobalHr(userId);
 
       for (final doc in snapshot.docs) {
         final team = TeamModel.fromMap(doc.data());
-        
+
+        // Check if user is a member of this team
+        final member = team.members.firstWhere(
+          (m) => m.userId == userId,
+          orElse: () => TeamMember(
+            userId: '',
+            addedBy: '',
+            role: 'none',
+            joinedAt: DateTime.now(),
+          ),
+        );
+
         if (isHr) {
-          // HR can see all teams
-          teams.add(UserTeamRole(
-            teamId: doc.id,
-            teamName: team.name,
-            role: TeamRole.hr,
-            joinedAt: team.createdAt,
-          ));
+          // HR can see all teams, but should show their actual role if they're a member
+          if (member.role != 'none') {
+            // HR user is also a team member, get their actual team role
+            final role = await getUserRoleInTeam(doc.id, userId);
+            teams.add(
+              UserTeamRole(
+                teamId: doc.id,
+                teamName: team.name,
+                role: role,
+                joinedAt: member.joinedAt,
+              ),
+            );
+          } else {
+            // HR user is not a member, show as HR role
+            teams.add(
+              UserTeamRole(
+                teamId: doc.id,
+                teamName: team.name,
+                role: TeamRole.hr,
+                joinedAt: team.createdAt,
+              ),
+            );
+          }
         } else {
           // Regular users see only teams they're members of
-          final member = team.members.firstWhere(
-            (m) => m.userId == userId,
-            orElse: () => TeamMember(
-              userId: '', 
-              addedBy: '', 
-              role: 'none', 
-              joinedAt: DateTime.now()
-            ),
-          );
-
           if (member.role != 'none') {
             final role = await getUserRoleInTeam(doc.id, userId);
-            teams.add(UserTeamRole(
-              teamId: doc.id,
-              teamName: team.name,
-              role: role,
-              joinedAt: member.joinedAt,
-            ));
+            teams.add(
+              UserTeamRole(
+                teamId: doc.id,
+                teamName: team.name,
+                role: role,
+                joinedAt: member.joinedAt,
+              ),
+            );
           }
         }
       }

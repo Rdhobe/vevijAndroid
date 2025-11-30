@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
 // Employee Attendance Page
 class EmployeeAttendancePage extends StatefulWidget {
   final String employeeId;
@@ -19,12 +19,32 @@ class EmployeeAttendancePage extends StatefulWidget {
 class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
   DateTime selectedDate = DateTime.now();
   String selectedPeriod = 'This Month';
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  late String employeeName = '';
+  @override
+  initState() {
+    super.initState();
+    _loadAttendance();
+  }
+  Future<void> _loadAttendance() async {
+    // Load attendance data logic can be implemented here if needed
+    final currentUserId = _auth.currentUser?.uid;
+    if (currentUserId == null)  {
+      // Handle unauthenticated user
+      return;
+    }
+     final snapshot = await FirebaseFirestore.instance.collection('users').doc(currentUserId).get();
+    setState(() {
+      // Update state with loaded data if necessary
+      employeeName = snapshot['empName'];
+    });
 
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.employeeName} - Attendance'),
+        title: Text('Attendance'),
       ),
       body: Column(
         children: [
@@ -59,7 +79,17 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
               ],
             ),
           ),
-          
+          // name Display
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Employee: ${employeeName}',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
           // Attendance List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(

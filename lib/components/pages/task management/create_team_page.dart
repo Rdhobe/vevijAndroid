@@ -117,17 +117,23 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
         'createdBy': AuthService().getCurrentUserId(), // Get from auth
         'memberIds': _members.map((m) => m.userId).toList(),
         'members': _members.map((m) => m.toMap()).toList(),
-        'createdAt': Timestamp.now(),
+        'createdAt': _isEditing ? Timestamp.now() : Timestamp.now(),
         'updatedAt': Timestamp.now(),
       };
 
       if (_isEditing) {
+        // Update existing team
         await _firestore.collection('teams').doc(widget.teamId).update(teamData);
+        _showSuccess('Team updated successfully');
       } else {
-        await _firestore.collection('teams').add(teamData);
+        // Create new team - use the generated ID as both document ID and teamId
+        final newDocRef = _firestore.collection('teams').doc();
+        teamData['teamId'] = newDocRef.id;
+        teamData['createdAt'] = Timestamp.now();
+        await newDocRef.set(teamData);
+        _showSuccess('Team created successfully');
       }
 
-      _showSuccess('Team ${_isEditing ? 'updated' : 'created'} successfully');
       Navigator.pop(context);
     } catch (e) {
       print('Failed to save team: $e');
@@ -214,6 +220,15 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _buildContent(),
+      floatingActionButton: Padding(
+  padding: const EdgeInsets.only(right: 12.0, bottom: 8.0),
+  child: FloatingActionButton(
+    onPressed: _showAddMemberBottomSheet,
+    backgroundColor: Colors.deepPurple,
+    elevation: 8,
+    child: Icon(Icons.add, size: 28),
+  ),
+),
     );
   }
 
@@ -321,19 +336,19 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
         ),
         
         // Add Member Button
-        Container(
-          padding: const EdgeInsets.all(16),
-          child: ElevatedButton.icon(
-            onPressed: () => _showAddMemberBottomSheet(),
-            icon: const Icon(Icons.person_add),
-            label: const Text('Add Team Members'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-            ),
-          ),
-        ),
+        // Container(
+        //   padding: const EdgeInsets.all(16),
+        //   child: ElevatedButton.icon(
+        //     onPressed: () => _showAddMemberBottomSheet(),
+        //     icon: const Icon(Icons.person_add),
+        //     label: const Text('Add Team Members'),
+        //     style: ElevatedButton.styleFrom(
+        //       backgroundColor: Colors.blue,
+        //       foregroundColor: Colors.white,
+        //       minimumSize: const Size(double.infinity, 50),
+        //     ),
+        //   ),
+        // ),
       ],
     );
   }
@@ -446,16 +461,22 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _AddMemberBottomSheet(
-        employees: _filteredEmployees,
-        searchQuery: _searchQuery,
-        onSearchChanged: _filterEmployees,
-        onMemberAdded: _addMember,
-        existingMembers: _members,
+      builder: (context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setModalState) {
+          return _AddMemberBottomSheet(
+            employees: _filteredEmployees,
+            searchQuery: _searchQuery,
+            onSearchChanged: (query) {
+              _filterEmployees(query);
+              setModalState(() {}); // This triggers rebuild of the bottom sheet
+            },
+            onMemberAdded: _addMember,
+            existingMembers: _members,
+          );
+        },
       ),
     );
   }
-
   void _showRoleChangeDialog(TeamMember member) {
     final employee = _allEmployees.firstWhere(
       (emp) => emp.uid == member.userId,

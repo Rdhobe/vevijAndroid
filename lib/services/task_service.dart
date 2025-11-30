@@ -3,6 +3,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../models/tasks/task_model.dart';
 import '../utils/helpers.dart';
 import 'dart:io';
+import 'package:rxdart/rxdart.dart';
 class TaskService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -115,7 +116,8 @@ Future<void> updateDueDate(
 
   // Stream tasks for specific user
   Stream<List<TaskModel>> streamTasksForUser(String userId) {
-    return _firestore
+    // find tasks assigned to a user (either directly or via team) assignedto or monitors to 
+     final assignedtasks= _firestore
         .collection('tasks')
         .where('assignedTo', arrayContains: userId)
         .orderBy('dueDate')
@@ -123,6 +125,16 @@ Future<void> updateDueDate(
         .map((snapshot) => snapshot.docs
             .map((doc) => TaskModel.fromMap(doc.data()))
             .toList());
+    final monitoredtasks= _firestore
+        .collection('tasks')
+        .where('monitors', arrayContains: userId)
+        .orderBy('dueDate')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => TaskModel.fromMap(doc.data()))
+            .toList());
+
+    return Rx.merge([assignedtasks, monitoredtasks]);
   }
 
   // Create new task

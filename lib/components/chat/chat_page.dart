@@ -273,7 +273,7 @@ class PersonalChatTabState extends State<PersonalChatTab> {
                 }
 
                 var userData = userSnapshot.data!.data() as Map<String, dynamic>?;
-                var userName = userData?['name'] ?? 'Unknown User';
+                var userName = userData?['empName'] ?? 'Unknown User';
                 var userRole = userData?['role'] ?? '';
 
                 return Card(
@@ -450,7 +450,7 @@ Widget _buildChatRequests() {
                   }
 
                   var userData = userSnapshot.data!.data() as Map<String, dynamic>?;
-                  var userName = userData?['name'] ?? 'Unknown User';
+                  var userName = userData?['empName'] ?? 'Unknown User';
                   var userRole = userData?['role'] ?? '';
 
                   return Card(
@@ -1154,7 +1154,7 @@ class PersonalChatScreenState extends State<PersonalChatScreen> {
       // Get sender's name
       var senderDoc = await _firestore.collection('users').doc(_auth.currentUser?.uid).get();
       var senderData = senderDoc.data();
-      var senderName = senderData?['name'] ?? 'Someone';
+      var senderName = senderData?['empName'] ?? 'Someone';
 
       // Add message to chat
       await _firestore
@@ -1521,7 +1521,7 @@ class ProjectChatScreenState extends State<ProjectChatScreen> {
       // Get current user data
       var userDoc = await _firestore.collection('users').doc(_auth.currentUser?.uid).get();
       var userData = userDoc.data() ;
-      var senderName = userData?['name'] ?? 'Unknown User';
+      var senderName = userData?['empName'] ?? 'Unknown User';
 
       // Add message to project chat
       await _firestore

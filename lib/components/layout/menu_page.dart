@@ -1,5 +1,7 @@
 // menu_page.dart
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:vevij/models/permissions/employee_permission.dart';
 import 'package:vevij/components/pages/permission_management_page.dart';
 import 'package:vevij/components/pages/atttendance/mark_attendance.dart';
@@ -18,6 +20,8 @@ import 'package:vevij/components/pages/project management/project_view_page.dart
 import 'package:vevij/components/pages/project management/project_management.dart';
 import 'package:vevij/components/pages/project management/project_report.dart';
 import 'package:vevij/components/chat/chat_page.dart';
+import 'package:vevij/components/pages/task management/my_tasks_dashboard.dart';
+import 'package:vevij/components/pages/task management/admin_task_dashboard.dart';
 
 class MenuPage extends StatefulWidget {
   final String userId;
@@ -37,11 +41,73 @@ class MenuPage extends StatefulWidget {
 class _MenuPageState extends State<MenuPage> {
   List<MenuItem> _menuItems = [];
   bool _isLoading = true;
-
+  int _totalUnreadCount = 0;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   @override
   void initState() {
     super.initState();
     _loadMenuItems();
+    _listenToUnreadMessages();
+  }
+  void _listenToUnreadMessages() {
+    final currentUserId = _auth.currentUser?.uid;
+    if (currentUserId == null) return;
+
+    // Listen to personal chat unread count
+    _firestore
+        .collection('personal_chats')
+        .where('participants', arrayContains: currentUserId)
+        .snapshots()
+        .listen((snapshot) {
+          int personalUnread = 0;
+          for (var doc in snapshot.docs) {
+            var data = doc.data();
+            var unreadCount = data['unreadCount_$currentUserId'] ?? 0;
+            personalUnread += unreadCount as int;
+          }
+          _updateTotalUnreadCount(personalUnread: personalUnread);
+        });
+
+    // Listen to project chat unread count
+    _firestore.collection('project_chats').snapshots().listen((snapshot) {
+      int projectUnread = 0;
+      for (var doc in snapshot.docs) {
+        var data = doc.data();
+        var unreadCount = data['unreadCount_$currentUserId'] ?? 0;
+        projectUnread += unreadCount as int;
+      }
+      _updateTotalUnreadCount(projectUnread: projectUnread);
+    });
+
+    // Listen to pending chat requests
+    _firestore
+        .collection('chat_requests')
+        .where('receiverId', isEqualTo: currentUserId)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snapshot) {
+          _updateTotalUnreadCount(requestsCount: snapshot.docs.length);
+        });
+  }
+  
+  int _personalUnread = 0;
+  int _projectUnread = 0;
+  int _requestsCount = 0;
+
+  void _updateTotalUnreadCount({
+    int? personalUnread,
+    int? projectUnread,
+    int? requestsCount,
+  }) {
+    if (mounted) {
+      setState(() {
+        if (personalUnread != null) _personalUnread = personalUnread;
+        if (projectUnread != null) _projectUnread = projectUnread;
+        if (requestsCount != null) _requestsCount = requestsCount;
+        _totalUnreadCount = _personalUnread + _projectUnread + _requestsCount;
+      });
+    }
   }
 
   Future<void> _loadMenuItems() async {
@@ -153,20 +219,6 @@ class _MenuPageState extends State<MenuPage> {
     }
     if (await EmployeePermissionChecker.can(
       widget.userId,
-      EmployeePermission.manageEmployees,
-    )) {
-      items.add(
-        MenuItem(
-          title: 'Manage Employee',
-          icon: Icons.people,
-          color: Colors.pinkAccent,
-          page: EmployeeOverviewPage(),
-          requiredPermission: EmployeePermission.manageEmployees,
-        ),
-      );
-    }
-    if (await EmployeePermissionChecker.can(
-      widget.userId,
       EmployeePermission.adminManageLeaves,
     )) {
       items.add(
@@ -181,15 +233,75 @@ class _MenuPageState extends State<MenuPage> {
     }
     if (await EmployeePermissionChecker.can(
       widget.userId,
+      EmployeePermission.manageLeaves,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Employee Requests',
+          icon: Icons.request_page,
+          color: Colors.blueAccent,
+          page: EmployeeRequestsPage(
+            userId: widget.userId,
+            userName: widget.userName,
+            employeeData: widget.employeeData,
+          ),
+          requiredPermission: EmployeePermission.manageLeaves,
+        ),
+      );
+    }
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.manageEmployees,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'Manage Employee',
+          icon: Icons.people,
+          color: Colors.pinkAccent,
+          page: EmployeeOverviewPage(),
+          requiredPermission: EmployeePermission.manageEmployees,
+        ),
+      );
+    }
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
       EmployeePermission.tasksManagement,
     )) {
       items.add(
         MenuItem(
-          title: 'Tasks management',
+          title: 'Team Tasks',
           icon: Icons.task,
           color: Colors.orangeAccent,
           page: TeamListPage(),
           requiredPermission: EmployeePermission.tasksManagement,
+        ),
+      );
+    }
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.tasksManagement,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'MY Tasks',
+          icon: Icons.task,
+          color: Colors.orangeAccent,
+          page: MyTasksDashboard(),
+          requiredPermission: EmployeePermission.tasksManagement,
+        ),
+      );
+    }
+    if (await EmployeePermissionChecker.can(
+      widget.userId,
+      EmployeePermission.tasksManagementadmin,
+    )) {
+      items.add(
+        MenuItem(
+          title: 'My Task Dashboard (Admin)',
+          icon: Icons.dashboard_customize,
+          color: Colors.deepOrange,
+          page: const AdminTaskDashboard(),
+          requiredPermission: EmployeePermission.tasksManagementadmin,
         ),
       );
     }
@@ -263,24 +375,6 @@ class _MenuPageState extends State<MenuPage> {
         ),
       );
     }
-    if (await EmployeePermissionChecker.can(
-      widget.userId,
-      EmployeePermission.manageLeaves,
-    )) {
-      items.add(
-        MenuItem(
-          title: 'Employee Requests',
-          icon: Icons.request_page,
-          color: Colors.blueAccent,
-          page: EmployeeRequestsPage(
-            userId: widget.userId,
-            userName: widget.userName,
-            employeeData: widget.employeeData,
-          ),
-          requiredPermission: EmployeePermission.manageLeaves,
-        ),
-      );
-    }
 
     setState(() {
       _menuItems = items;
@@ -304,13 +398,22 @@ class _MenuPageState extends State<MenuPage> {
             onPressed: _loadMenuItems,
             tooltip: 'Refresh Menu',
           ),
-          IconButton(
-            icon: const Icon(Icons.chat),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const ChatPage()),
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Badge(
+              label: Text('$_totalUnreadCount'),
+              backgroundColor: Colors.red,
+              textColor: Colors.white,
+              isLabelVisible: _totalUnreadCount > 0,
+              child: IconButton(
+                icon: const Icon(Icons.chat),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ChatPage()),
+                ),
+                tooltip: 'Chat',
+              ),
             ),
-            tooltip: 'Chat',
           ),
         ],
       ),

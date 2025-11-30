@@ -41,7 +41,7 @@ export 'package:vevij/components/pages/permission_management_page.dart';
 export 'package:vevij/components/pages/authentication/intro_page.dart';
 export 'package:vevij/components/pages/authentication/login_page.dart';
 export 'package:vevij/components/pages/authentication/empprofile_page.dart';
-export 'package:vevij/components/pages/atttendance/mark_attendance.dart';
+export 'package:vevij/components/pages/atttendance/MarkAttendancePage.dart';
 export 'package:vevij/components/pages/atttendance/employeeattendancereportpage.dart';
 export 'package:vevij/components/pages/employee%20management/create_employee_page.dart';
 export 'package:vevij/components/pages/employee%20management/admin_hr_location_montering.dart';

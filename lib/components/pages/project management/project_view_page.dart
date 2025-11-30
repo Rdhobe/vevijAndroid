@@ -102,6 +102,14 @@ class _ProjectViewPageState extends State<ProjectViewPage> {
       padding: const EdgeInsets.all(20),
       child: Row(
         children: [
+          IconButton(
+            hoverColor: Colors.blue,
+            splashColor: Colors.brown,
+            highlightColor: Colors.blueAccent,
+            color: Colors.deepPurple,
+            icon: const Icon(Icons.arrow_back  ),
+            onPressed: () => Navigator.pop(context),
+          ),
           Container(
             width: 40,
             height: 40,

@@ -1,6 +1,6 @@
-// attendance_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+
 class Attendance {
   final String id;
   final String userId;
@@ -25,16 +25,23 @@ class Attendance {
   final String? logoutCoordinates;
   final double totalDistanceTraveled;
   final bool isOnBreak;
+
   final String? breakStartTime;
   final String? breakEndTime;
   final String? breakInCoordinates;
   final String? breakOutCoordinates;
+
   final String totalBreakTime;
   final int totalBreakSeconds;
   final String? lastBreakDuration;
   final String? earlyLogoutReason;
+
   final Timestamp createdAt;
   final Timestamp updatedAt;
+
+  // ✅ ADDED
+  final Timestamp? loginTimestamp;
+  final Timestamp? breakStartTimestamp;
 
   Attendance({
     required this.id,
@@ -70,9 +77,15 @@ class Attendance {
     this.earlyLogoutReason,
     required this.createdAt,
     required this.updatedAt,
+
+    // NEW FIELDS
+    this.loginTimestamp,
+    this.breakStartTimestamp,
   });
 
-  // Convert to Map for Firestore
+  // -------------------------
+  // Convert to Map
+  // -------------------------
   Map<String, dynamic> toMap() {
     return {
       'userId': userId,
@@ -107,13 +120,19 @@ class Attendance {
       'earlyLogoutReason': earlyLogoutReason,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
+
+      // NEW
+      'loginTimestamp': loginTimestamp,
+      'breakStartTimestamp': breakStartTimestamp,
     };
   }
 
-  // Create from Firestore Document
+  // -------------------------
+  // From Firestore
+  // -------------------------
   factory Attendance.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    
+
     return Attendance(
       id: doc.id,
       userId: data['userId'] ?? '',
@@ -148,10 +167,16 @@ class Attendance {
       earlyLogoutReason: data['earlyLogoutReason'],
       createdAt: data['createdAt'] ?? Timestamp.now(),
       updatedAt: data['updatedAt'] ?? Timestamp.now(),
+
+      // NEW FIELDS
+      loginTimestamp: data['loginTimestamp'],
+      breakStartTimestamp: data['breakStartTimestamp'],
     );
   }
 
-  // Create empty attendance
+  // -------------------------
+  // EMPTY FACTORY
+  // -------------------------
   factory Attendance.empty() {
     return Attendance(
       id: '',
@@ -168,14 +193,18 @@ class Attendance {
     );
   }
 
-  // Create for new login
+  // -------------------------
+  // forLogin factory
+  // -------------------------
   factory Attendance.forLogin({
     required String userId,
     required String userName,
     required String empId,
     required String coordinates,
   }) {
-    DateTime now = DateTime.now();
+    final DateTime now = DateTime.now();
+    final Timestamp ts = Timestamp.fromDate(now);
+
     return Attendance(
       id: '',
       userId: userId,
@@ -191,12 +220,17 @@ class Attendance {
       loginCoordinates: coordinates,
       type1: 'DP',
       portion: 1.0,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: ts,
+      updatedAt: ts,
+
+      // NEW: store login timestamp
+      loginTimestamp: ts,
     );
   }
 
-  // Copy with method for updates
+  // -------------------------
+  // copyWith
+  // -------------------------
   Attendance copyWith({
     String? id,
     String? userId,
@@ -231,6 +265,10 @@ class Attendance {
     String? earlyLogoutReason,
     Timestamp? createdAt,
     Timestamp? updatedAt,
+
+    // NEW
+    Timestamp? loginTimestamp,
+    Timestamp? breakStartTimestamp,
   }) {
     return Attendance(
       id: id ?? this.id,
@@ -266,64 +304,59 @@ class Attendance {
       earlyLogoutReason: earlyLogoutReason ?? this.earlyLogoutReason,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? Timestamp.now(),
+
+      // NEW fields in copy
+      loginTimestamp: loginTimestamp ?? this.loginTimestamp,
+      breakStartTimestamp: breakStartTimestamp ?? this.breakStartTimestamp,
     );
   }
 
-  // Getters for computed properties
+  // -------------------------
+  // Derived fields
+  // -------------------------
   bool get isLoggedIn => inTime != null && outTime == null;
   bool get isLoggedOut => outTime != null;
   bool get isPresent => type1 == 'DP' || type1 == 'HD';
   bool get isAbsent => type1 == 'ABS';
   bool get isHalfDay => type1 == 'HD';
 
-  // Calculate work status
   String get workStatus {
     if (!isLoggedIn) return 'Not Logged In';
     if (isOnBreak) return 'On Break';
     return 'Working';
   }
 
-  // Get login time as DateTime
   DateTime? get loginDateTime {
     if (inTime == null) return null;
     try {
-      DateTime now = DateTime.now();
-      DateFormat format = DateFormat('h:mm a');
-      DateTime parsed = format.parse(inTime!);
+      final DateTime now = DateTime.now();
+      final DateFormat format = DateFormat('h:mm a');
+      final DateTime parsed = format.parse(inTime!);
       return DateTime(now.year, now.month, now.day, parsed.hour, parsed.minute);
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
-  // Get logout time as DateTime
   DateTime? get logoutDateTime {
     if (outTime == null) return null;
     try {
-      DateTime now = DateTime.now();
-      DateFormat format = DateFormat('h:mm a');
-      DateTime parsed = format.parse(outTime!);
+      final DateTime now = DateTime.now();
+      final DateFormat format = DateFormat('h:mm a');
+      final DateTime parsed = format.parse(outTime!);
       return DateTime(now.year, now.month, now.day, parsed.hour, parsed.minute);
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
   @override
-  String toString() {
-    return 'Attendance{id: $id, userName: $userName, date: $date, inTime: $inTime, outTime: $outTime, status: $type1}';
-  }
+  String toString() =>
+      'Attendance{id: $id, userName: $userName, date: $date, inTime: $inTime, outTime: $outTime, status: $type1}';
 
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is Attendance && other.id == id;
-  }
+  bool operator ==(Object other) => other is Attendance && other.id == id;
 
   @override
   int get hashCode => id.hashCode;
 }
-
-
-
-

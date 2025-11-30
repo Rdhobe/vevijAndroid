@@ -15,6 +15,7 @@ enum EmployeePermission {
   adminManageLeaves('Admin Manage Leaves', 'Can manage all leave requests'),
   managePermissions('Manage Permissions', 'Can manage user permissions'),
   tasksManagement('Tasks Management', 'Can manage tasks'),
+  tasksManagementadmin('Tasks Management (Admin)', 'Can manage all tasks'),
   viewProjects('Project view', 'Can view projects'),
   reportProjects('Project report', 'Can generate project reports'),
   manageProjects('Manage Projects', 'Can create and manage projects'),
