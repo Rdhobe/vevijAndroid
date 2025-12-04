@@ -2467,7 +2467,7 @@ Widget _buildMiniProgressIndicator(String label, bool isCompleted, Color color) 
 
         // Calculate overall stats
         int totalItems = snapshot.data!.docs.length;
-        int totalUsed = 0;
+        int totalUsed = 0 ;
         int totalBalance = 0;
         int totalReceived = 0;
         int totalRequired = 0;
@@ -2482,11 +2482,19 @@ Widget _buildMiniProgressIndicator(String label, bool isCompleted, Color color) 
               .toLowerCase();
           final category = _categorizeItem(materialName);
 
-          // Overall stats
-          totalUsed += (data['totalIssuedQty'] ?? 0) as int;
-          totalReceived += (data['totalReceivedQty'] ?? 0) as int;
-          totalBalance += (data['balIssueQty'] ?? 0) as int;
-          totalRequired += (data['requiredQty'] ?? 0) as int;
+          // Overall stats - handle both int and double from Firestore
+          totalUsed += ((data['totalIssuedQty'] ?? 0) is int 
+              ? (data['totalIssuedQty'] ?? 0) as int 
+              : ((data['totalIssuedQty'] ?? 0) as double).toInt());
+          totalReceived += ((data['totalReceivedQty'] ?? 0) is int 
+              ? (data['totalReceivedQty'] ?? 0) as int 
+              : ((data['totalReceivedQty'] ?? 0) as double).toInt());
+          totalBalance += ((data['balIssueQty'] ?? 0) is int 
+              ? (data['balIssueQty'] ?? 0) as int 
+              : ((data['balIssueQty'] ?? 0) as double).toInt());
+          totalRequired += ((data['requiredQty'] ?? 0) is int 
+              ? (data['requiredQty'] ?? 0) as int 
+              : ((data['requiredQty'] ?? 0) as double).toInt());
 
           // Category stats
           if (!categoryStats.containsKey(category)) {
@@ -2503,16 +2511,24 @@ Widget _buildMiniProgressIndicator(String label, bool isCompleted, Color color) 
               categoryStats[category]!['items']! + 1;
           categoryStats[category]!['required'] =
               categoryStats[category]!['required']! +
-              ((data['requiredQty'] ?? 0) as double).toInt();
+              ((data['requiredQty'] ?? 0) is int 
+                  ? (data['requiredQty'] ?? 0) as int 
+                  : ((data['requiredQty'] ?? 0) as double).toInt());
           categoryStats[category]!['received'] =
               categoryStats[category]!['received']! +
-              ((data['totalReceivedQty'] ?? 0) as int);
+              ((data['totalReceivedQty'] ?? 0) is int 
+                  ? (data['totalReceivedQty'] ?? 0) as int 
+                  : ((data['totalReceivedQty'] ?? 0) as double).toInt());
           categoryStats[category]!['issued'] =
               categoryStats[category]!['issued']! +
-              ((data['totalIssuedQty'] ?? 0) as int);
+              ((data['totalIssuedQty'] ?? 0) is int 
+                  ? (data['totalIssuedQty'] ?? 0) as int 
+                  : ((data['totalIssuedQty'] ?? 0) as double).toInt());
           categoryStats[category]!['balance'] =
               categoryStats[category]!['balance']! +
-              ((data['balIssueQty'] ?? 0) as int);
+              ((data['balIssueQty'] ?? 0) is int 
+                  ? (data['balIssueQty'] ?? 0) as int 
+                  : ((data['balIssueQty'] ?? 0) as double).toInt());
         }
 
         return SingleChildScrollView(

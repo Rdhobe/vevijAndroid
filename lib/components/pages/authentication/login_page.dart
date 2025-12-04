@@ -179,7 +179,7 @@ class _LoginPageState extends State<LoginPage> {
       // Initialize notifications after successful login
       await NotificationService.initialize();
 
-      if (status != 'active') {
+      if (status != 'Active') {
         await ErrorDialog.show(
           context,
           title: 'Account Inactive',

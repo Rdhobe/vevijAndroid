@@ -388,7 +388,71 @@ class NotificationService {
       return data?['isOnline'] ?? false;
     });
   }
-
+  // Send notification for new task comment
+  Future<void> sendTaskCommentNotification({
+    required List<String> userIds,
+    required String taskTitle,
+    required String taskId,
+    required String commenterName,
+    required String comment,
+  }) async {
+    for (String userId in userIds) {
+      if (userId != _auth.currentUser?.uid) {
+        await _firestore.collection('notifications').add({
+          'userId': userId,
+          'title': 'New Comment on $taskTitle',
+          'body': '$commenterName: $comment',
+          'taskId': taskId,
+          'type': 'task_comment',
+          'commentedBy': _auth.currentUser?.uid,
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+  }
+  // Send notification when user is assigned to a task
+  Future<void> sendTaskAssignmentNotification({
+    required List<String> userIds,
+    required String taskTitle,
+    required String taskId,
+    String? assignedBy,
+  }) async {
+    for (String userId in userIds) {
+      await _firestore.collection('notifications').add({
+        'userId': userId,
+        'title': 'New Task Assigned',
+        'body': 'You have been assigned to task: $taskTitle',
+        'taskId': taskId,
+        'type': 'task_assignment',
+        'assignedBy': assignedBy ?? _auth.currentUser?.uid,
+        'read': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+  // Send notification when task is updated
+  Future<void> sendTaskUpdateNotification({
+    required List<String> userIds,
+    required String taskTitle,
+    required String taskId,
+    required String updateType,
+  }) async {
+    for (String userId in userIds) {
+      if (userId != _auth.currentUser?.uid) {
+        await _firestore.collection('notifications').add({
+          'userId': userId,
+          'title': 'Task Updated',
+          'body': 'Task "$taskTitle" has been updated ($updateType)',
+          'taskId': taskId,
+          'type': 'task_update',
+          'updatedBy': _auth.currentUser?.uid,
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+  }
   // Show in-app notification banner
   void showInAppNotification(BuildContext context, String title, String message) {
     ScaffoldMessenger.of(context).showSnackBar(

@@ -32,10 +32,9 @@ class _IntroPageState extends State<IntroPage> {
         // Get cached user data
         final userData = await AuthService().getCachedUserData();
         final role = userData['userRole'];
-        final status = userData['status'];
         if (role != null && role.isNotEmpty) {
           // Navigate based on role
-          _navigateByRole(role, status);
+          _navigateByRole(role);
           return;
         }
       }
@@ -49,18 +48,7 @@ class _IntroPageState extends State<IntroPage> {
     }
   }
 
-  void _navigateByRole(String role, String? status) {
-    if (status != 'Active') {
-      ErrorDialog.show(
-        context,
-        title: 'Account Inactive',
-        message: 'Your account is inactive. Please contact support.',
-      );
-      // sign out the user
-      AuthService().signOut();
-      _navigateToLogin();
-      return;
-    }
+  void _navigateByRole(String role) {
     if (!mounted) return;
      Navigator.pushReplacementNamed(context, '/layout');
   }
