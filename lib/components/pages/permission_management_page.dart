@@ -42,6 +42,7 @@ class _PermissionManagementPageState extends State<PermissionManagementPage> {
           .get();
 
       _allEmployees = querySnapshot.docs
+          .where((doc) => doc.data()['status'] == 'Active' && doc.data()['designation'] != 'Contractor') // status == Active and designation != 'Admin'
           .map((doc) => Employee.fromMap(doc.data()))
           .toList();
       

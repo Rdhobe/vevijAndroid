@@ -175,9 +175,19 @@ class _LoginPageState extends State<LoginPage> {
           .doc(user!.uid)
           .get();
       final role = userData.data()?['designation'];
+      final status = userData.data()?['status'];
       // Initialize notifications after successful login
       await NotificationService.initialize();
 
+      if (status != 'active') {
+        await ErrorDialog.show(
+          context,
+          title: 'Account Inactive',
+          message:
+              'Your account is currently inactive. Please contact your administrator.',
+        );
+        return;
+      }
       if (role == null) {
         await ErrorDialog.show(
           context,

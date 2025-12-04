@@ -113,8 +113,11 @@ class CreateTaskPageState extends State<CreateTaskPage> {
     try {
       final userService = Provider.of<UserService>(context, listen: false);
       final users = await userService.getAllUsers();
+      final filterusers = users
+          .where((user) => user.status == 'Active' && user.designation != 'Contractor')
+          .toList();
       setState(() {
-        _availableUsers = users;
+        _availableUsers = filterusers;
         // Filter for monitors based on designation
         _availableMonitors = users.where((user) {
           final designation = user.designation.toLowerCase();

@@ -148,6 +148,10 @@ class _MyTasksDashboardState extends State<MyTasksDashboard>
           );
         },
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => CreateTaskPage())),
+        child: const Icon(Icons.add),
+      ),
     );
   }
 
@@ -255,6 +259,7 @@ class _MyTasksDashboardState extends State<MyTasksDashboard>
               
               return TaskCardModern(
                 task: task,
+                userId: authService.currentUser?.uid ?? '',
                 showActions: true,
                 onTap: () {
                   Navigator.push(

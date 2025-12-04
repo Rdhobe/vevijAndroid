@@ -114,8 +114,10 @@ class _TeamTasksPageState extends State<TeamTasksPage> {
                       itemCount: filteredTasks.length,
                       itemBuilder: (context, index) {
                         final task = filteredTasks[index];
+                        final authService = Provider.of<AuthService>(context, listen: false);
                         return TaskCardModern(
                           task: task,
+                          userId: authService.currentUser?.uid ?? '',
                           showActions:
                               widget.isSuperAdminOrHr ||
                               widget.userRole == TeamRole.manager ||

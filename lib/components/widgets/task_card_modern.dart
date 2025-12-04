@@ -11,11 +11,13 @@ class TaskCardModern extends StatefulWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onComplete;
   final VoidCallback? onDelete;
+  final String userId;
   final bool showActions;
 
   const TaskCardModern({
     super.key,
     required this.task,
+    required this.userId,
     this.onTap,
     this.onEdit,
     this.onComplete,
@@ -304,7 +306,7 @@ class _TaskCardModernState extends State<TaskCardModern>
             color: AppColors.success,
             onPressed: widget.onComplete,
           ),
-        if (widget.onEdit != null)
+        if (widget.onEdit != null && widget.task.createdBy == widget.userId)
           _buildActionButton(
             icon: Icons.edit,
             color: AppColors.info,

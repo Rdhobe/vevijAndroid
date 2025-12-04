@@ -88,10 +88,12 @@ class _HRLocationMonitorPageState extends State<HRLocationMonitorPage>
           .where('grade', isNotEqualTo: 'Owner')
           .orderBy('empName')
           .get();
-
+      final filteredDocs = snapshot.docs.where(
+        (doc) => doc['designation'] != 'Contractor',
+      );
       List<EmployeeLocationData> loadedEmployees = [];
       
-      for (var doc in snapshot.docs) {
+      for (var doc in filteredDocs) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
         
         String today = DateFormat('dd-MMM-yy').format(DateTime.now());

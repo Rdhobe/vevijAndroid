@@ -6,6 +6,7 @@ import 'package:vevij/models/employee/employee.dart';
 import 'package:vevij/services/task_service.dart';
 import 'package:vevij/services/team_service.dart';
 import 'package:vevij/services/user_service.dart';
+import 'package:vevij/services/auth_service.dart';
 import 'package:vevij/components/widgets/task_card_modern.dart';
 import 'package:vevij/components/pages/task management/task_details_page.dart';
 import 'package:vevij/components/pages/task management/create_task_page.dart';
@@ -277,9 +278,10 @@ class _AdminTaskDashboardState extends State<AdminTaskDashboard>
             itemCount: tasks.length,
             itemBuilder: (context, index) {
               final task = tasks[index];
-
+              final authService = Provider.of<AuthService>(context, listen: false);
               return TaskCardModern(
                 task: task,
+                userId: authService.currentUser?.uid ?? '',
                 showActions: true, // Admin can always perform actions
                 onTap: () {
                   Navigator.push(
