@@ -63,12 +63,13 @@ class StatePersistenceService {
     }
   }
 
-  Future<void> saveUserData(String userName, String empId, String userId) async {
+  Future<void> saveUserData(String userName, String empId, String userId ,String shift) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userNameKey, userName);
       await prefs.setString(_empIdKey, empId);
       await prefs.setString(_userIdKey, userId);
+      await prefs.setString('shift', shift);
       
       if (!kReleaseMode) {
         print('✅ User data saved to cache');

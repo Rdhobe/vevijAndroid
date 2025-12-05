@@ -138,6 +138,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
           userName: "Please Sign In",
           userId: "",
           empId: "",
+          shift: "",  
         ));
         return;
       }
@@ -150,6 +151,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
           userName: cachedUserData['userName']!,
           empId: cachedUserData['empId']!,
           userId: currentUser.uid,
+          shift: cachedUserData['shift']!,
         ));
       }
 
@@ -168,14 +170,16 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
           userName: employee.empName,
           empId: employee.empCode.isNotEmpty ? employee.empCode : employee.uid,
           userId: currentUser.uid,
+          shift: employee.shift,
         ));
 
-        await _stateService.saveUserData(employee.empName, employee.empCode, currentUser.uid);
+        await _stateService.saveUserData(employee.empName, employee.empCode, currentUser.uid , employee.shift);
         _setupUserDataListener(currentUser.uid);
       } else {
         _updateState(_state.copyWith(
           userName: "Employee Data Not Found",
           empId: "",
+
         ));
       }
     } catch (e, stackTrace) {
@@ -220,8 +224,9 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
               _updateState(_state.copyWith(
                 userName: employee.empName,
                 empId: employee.empCode.isNotEmpty ? employee.empCode : userId,
+                shift: employee.shift,
               ));
-              _stateService.saveUserData(employee.empName, employee.empCode, userId);
+              _stateService.saveUserData(employee.empName, employee.empCode, userId , employee.shift);
             } catch (e, stackTrace) {
               _logError('Error in user data listener', e, stackTrace);
             }
@@ -602,7 +607,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     _timer?.cancel(); // Always cancel existing timer first
     
     if (_isDisposed || !_state.isLoggedIn || _state.loginTime == null) {
-      if (kDebugMode) print('⏰ Timer not started: disposed=${_isDisposed}, loggedIn=${_state.isLoggedIn}, loginTime=${_state.loginTime}');
+      if (kDebugMode) print('⏰ Timer not started: disposed=$_isDisposed, loggedIn=${_state.isLoggedIn}, loginTime=${_state.loginTime}');
       return;
     }
 
@@ -615,7 +620,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _lastTimerTick = DateTime.now();
       
       if (!mounted || _isDisposed || !_state.isLoggedIn || _state.loginTime == null) {
-        if (kDebugMode) print('⏰ Timer cancelled: mounted=$mounted, disposed=${_isDisposed}, loggedIn=${_state.isLoggedIn}');
+        if (kDebugMode) print('⏰ Timer cancelled: mounted=$mounted, disposed=$_isDisposed, loggedIn=${_state.isLoggedIn}');
         timer.cancel();
         return;
       }
@@ -2153,6 +2158,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
     await _getCurrentLocation();
 
     final now = DateTime.now();
+
     final needsApproval = _needsLoginApproval();
 
     if (needsApproval) {
@@ -2256,10 +2262,79 @@ Future<void> _restoreLoginState(Attendance attendance) async {
   }
 
   bool _needsLoginApproval() {
-    DateTime now = DateTime.now();
+  if (_state.userId.isEmpty || _state.empId.isEmpty) {
+    // If user is not logged in, no approval needed for login
+    return false;
+  }
+
+  DateTime now = DateTime.now();
+  String employeeShift = _state.shift;
+
+  // Parse shift string to get start time
+  try {
+    // Handle different shift formats
+    DateTime shiftStartTime = _parseShiftStartTime(employeeShift);
+    DateTime graceEndTime = shiftStartTime.add(const Duration(minutes: 15));
+
+    // Check if current time is within grace period
+    return now.isAfter(graceEndTime);
+  } catch (e) {
+    _logError('Error parsing shift time', e, null);
+    // Default fallback: if shift can't be parsed, use standard 9:30 AM
     DateTime graceTime = DateTime(now.year, now.month, now.day, 9, 45);
     return now.isAfter(graceTime);
   }
+}
+
+DateTime _parseShiftStartTime(String shiftString) {
+  DateTime now = DateTime.now();
+  
+  // Handle various shift formats
+  if (shiftString.toLowerCase().contains('9:30am') || 
+      shiftString.toLowerCase().contains('9:30 am') ||
+      shiftString == '9:30AM to 6:30 PM') {
+    return DateTime(now.year, now.month, now.day, 9, 30);
+  } else if (shiftString.toLowerCase().contains('9:50am') || 
+             shiftString.toLowerCase().contains('9:50 am') ||
+             shiftString == '9:50AM to 6:50 PM') {
+    return DateTime(now.year, now.month, now.day, 9, 50);
+  } 
+  // Add more shift patterns as needed
+  else if (shiftString.toLowerCase().contains('10:00am') || 
+           shiftString.toLowerCase().contains('10:00 am')) {
+    return DateTime(now.year, now.month, now.day, 10, 0);
+  } else if (shiftString.toLowerCase().contains('10:30am') || 
+             shiftString.toLowerCase().contains('10:30 am')) {
+    return DateTime(now.year, now.month, now.day, 10, 30);
+  }
+  
+  // Default fallback - try to extract time from string
+  try {
+    // Try to extract time like "9:30AM" or "09:30 AM"
+    final timeRegex = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)', caseSensitive: false);
+    final match = timeRegex.firstMatch(shiftString);
+    
+    if (match != null) {
+      int hour = int.parse(match.group(1)!);
+      int minute = int.parse(match.group(2)!);
+      String period = match.group(3)!.toUpperCase();
+      
+      // Convert to 24-hour format
+      if (period == 'PM' && hour < 12) {
+        hour += 12;
+      } else if (period == 'AM' && hour == 12) {
+        hour = 0;
+      }
+      
+      return DateTime(now.year, now.month, now.day, hour, minute);
+    }
+  } catch (e) {
+    _logError('Error parsing shift from string: $shiftString', e, null);
+  }
+  
+  // If all parsing fails, return default 9:30 AM
+  return DateTime(now.year, now.month, now.day, 9, 30);
+}
   Widget _buildUserInfo() {
     if (_isLoading) return _buildLoadingUserInfo();
     if (_hasError) return _buildErrorUserInfo();

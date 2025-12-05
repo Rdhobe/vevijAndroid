@@ -7,6 +7,7 @@ class Employee {
   final BankDetails bankDetails;
   final String birthDate;
   final String branch;
+  final String shift;
   final DateTime createdAt;
   final String department;
   final String designation;
@@ -34,6 +35,7 @@ class Employee {
     required this.bankDetails,
     required this.birthDate,
     required this.branch,
+    required this.shift,
     required this.createdAt,
     required this.department,
     required this.designation,
@@ -62,6 +64,7 @@ class Employee {
       bankDetails: BankDetails.fromMap(Map<String, dynamic>.from(map['bankDetails'] ?? {})),
       birthDate: map['birthDate'] ?? '',
       branch: map['branch'] ?? '',
+      shift: map['shift'] ?? '',
       createdAt: map['createdAt'] is Timestamp
         ? (map['createdAt'] as Timestamp).toDate()
         : (map['createdAt'] is String
@@ -95,6 +98,7 @@ class Employee {
       'bankDetails': bankDetails.toMap(),
       'birthDate': birthDate,
       'branch': branch,
+      'shift': shift,
       'createdAt': Timestamp.fromDate(createdAt),
       'department': department,
       'designation': designation,
@@ -124,6 +128,7 @@ class Employee {
     BankDetails? bankDetails,
     String? birthDate,
     String? branch,
+    String? shift,
     DateTime? createdAt,
     String? department,
     String? designation,
@@ -151,6 +156,7 @@ class Employee {
       bankDetails: bankDetails ?? this.bankDetails,
       birthDate: birthDate ?? this.birthDate,
       branch: branch ?? this.branch,
+      shift: shift ?? this.shift,
       createdAt: createdAt ?? this.createdAt,
       department: department ?? this.department,
       designation: designation ?? this.designation,
@@ -187,6 +193,7 @@ class Employee {
         bankDetails: BankDetails(accountNumber: '', bankName: '', branch: '', ifscCode: ''),
         birthDate: '',
         branch: '',
+        shift: '',
         createdAt: DateTime.now(),
         department: '',
         designation: '',
@@ -218,6 +225,7 @@ class Employee {
       bankDetails: BankDetails(accountNumber: '', bankName: '', branch: '', ifscCode: ''),
       birthDate: '',
       branch: '',
+      shift: '',
       createdAt: DateTime.now(),
       department: '',
       designation: '',
@@ -248,6 +256,7 @@ class Employee {
         bankDetails: BankDetails(accountNumber: '', bankName: '', branch: '', ifscCode: ''),
         birthDate: '',
         branch: '',
+        shift: '',
         createdAt: DateTime.now(),
         department: '',
         designation: '',

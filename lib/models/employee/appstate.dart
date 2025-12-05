@@ -6,6 +6,7 @@ class AppState extends Equatable {
   final String userName;
   final String userId;
   final String empId;
+  final String shift;
   final bool isLoggedIn;
   final bool isOnBreak;
   final DateTime? loginTime;
@@ -29,6 +30,7 @@ class AppState extends Equatable {
     required this.userName,
     required this.userId,
     required this.empId,
+    required this.shift,
     required this.isLoggedIn,
     required this.isOnBreak,
     this.loginTime,
@@ -51,6 +53,7 @@ class AppState extends Equatable {
         userName: "Please Sign In",
         userId: "",
         empId: "",
+        shift: "",
         isLoggedIn: false,
         isOnBreak: false,
         loginTime: null,
@@ -73,6 +76,7 @@ class AppState extends Equatable {
     String? userName,
     String? userId,
     String? empId,
+    String? shift,
     bool? isLoggedIn,
     bool? isOnBreak,
     DateTime? loginTime,
@@ -94,6 +98,7 @@ class AppState extends Equatable {
       userName: userName ?? this.userName,
       userId: userId ?? this.userId,
       empId: empId ?? this.empId,
+      shift: shift ?? this.shift,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isOnBreak: isOnBreak ?? this.isOnBreak,
       loginTime: loginTime ?? this.loginTime,
@@ -118,6 +123,7 @@ class AppState extends Equatable {
       'userName': userName,
       'userId': userId,
       'empId': empId,
+      'shift': shift,
       'isLoggedIn': isLoggedIn,
       'isOnBreak': isOnBreak,
       'loginTime': loginTime?.toIso8601String(),
@@ -142,6 +148,7 @@ class AppState extends Equatable {
       userName: map['userName'] ?? "Please Sign In",
       userId: map['userId'] ?? "",
       empId: map['empId'] ?? "",
+      shift: map['shift'] ?? "",
       isLoggedIn: map['isLoggedIn'] ?? false,
       isOnBreak: map['isOnBreak'] ?? false,
       loginTime: map['loginTime'] != null ? DateTime.parse(map['loginTime']) : null,
@@ -182,6 +189,7 @@ class AppState extends Equatable {
         userName,
         userId,
         empId,
+        shift,
         isLoggedIn,
         isOnBreak,
         loginTime,

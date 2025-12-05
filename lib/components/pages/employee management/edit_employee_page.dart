@@ -43,10 +43,12 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
   String? _selectedGender;
   String? _selectedStatus;
   String? _selectedPaymentMode;
+  String? _selectedShift;
 
   // Dropdown options
   final List<String> _titles = ['Mr', 'Mrs', 'Ms'];
   final List<String> _genders = ['Male', 'Female', 'Other'];
+  List<String> _shifts = ['9:30AM to 6:30 PM','9:50AM to 6:50 PM'];
   List<String> _designations = [];
   List<String> _departments = [];
   List<String> _branches = [];
@@ -260,6 +262,7 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
         'empCode': _empCodeController.text.trim(),
         'email': email,
         'grade': _selectedGrade,
+        'shift' : _selectedShift,
         'branch': _selectedBranch,
         'department': _selectedDepartment,
         'designation': _selectedDesignation,
@@ -521,6 +524,23 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
               });
             },
             validator: (value) => value == null ? 'Gender is required' : null,
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedShift,
+            decoration: const InputDecoration(
+              labelText: 'shifts *',
+              border: OutlineInputBorder(),
+            ),
+            items: _shifts.map((shift) {
+              return DropdownMenuItem(value: shift , child: Text(shift));
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedShift = value;
+              });
+            },
+            validator: (value) => value == null ? 'shift is required' : null,
           ),
         ],
       ),
