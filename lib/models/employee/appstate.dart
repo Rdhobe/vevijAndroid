@@ -7,6 +7,7 @@ class AppState extends Equatable {
   final String userId;
   final String empId;
   final String shift;
+  final String workLocation;
   final bool isLoggedIn;
   final bool isOnBreak;
   final DateTime? loginTime;
@@ -31,6 +32,7 @@ class AppState extends Equatable {
     required this.userId,
     required this.empId,
     required this.shift,
+    required this.workLocation,
     required this.isLoggedIn,
     required this.isOnBreak,
     this.loginTime,
@@ -54,6 +56,7 @@ class AppState extends Equatable {
         userId: "",
         empId: "",
         shift: "",
+        workLocation: "",
         isLoggedIn: false,
         isOnBreak: false,
         loginTime: null,
@@ -77,6 +80,7 @@ class AppState extends Equatable {
     String? userId,
     String? empId,
     String? shift,
+    String? workLocation,
     bool? isLoggedIn,
     bool? isOnBreak,
     DateTime? loginTime,
@@ -99,6 +103,7 @@ class AppState extends Equatable {
       userId: userId ?? this.userId,
       empId: empId ?? this.empId,
       shift: shift ?? this.shift,
+      workLocation: workLocation ?? this.workLocation,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isOnBreak: isOnBreak ?? this.isOnBreak,
       loginTime: loginTime ?? this.loginTime,
@@ -124,6 +129,7 @@ class AppState extends Equatable {
       'userId': userId,
       'empId': empId,
       'shift': shift,
+      'workLocation': workLocation,
       'isLoggedIn': isLoggedIn,
       'isOnBreak': isOnBreak,
       'loginTime': loginTime?.toIso8601String(),
@@ -149,6 +155,7 @@ class AppState extends Equatable {
       userId: map['userId'] ?? "",
       empId: map['empId'] ?? "",
       shift: map['shift'] ?? "",
+      workLocation: map['workLocation'] ?? "",
       isLoggedIn: map['isLoggedIn'] ?? false,
       isOnBreak: map['isOnBreak'] ?? false,
       loginTime: map['loginTime'] != null ? DateTime.parse(map['loginTime']) : null,
@@ -190,6 +197,7 @@ class AppState extends Equatable {
         userId,
         empId,
         shift,
+        workLocation,
         isLoggedIn,
         isOnBreak,
         loginTime,

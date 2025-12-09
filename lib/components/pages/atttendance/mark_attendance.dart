@@ -14,6 +14,7 @@ import 'package:vevij/models/employee/employee.dart';
 import 'package:vevij/models/employee/attendance_model.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class MarkAttendancePage extends StatefulWidget {
   const MarkAttendancePage({super.key});
@@ -21,13 +22,13 @@ class MarkAttendancePage extends StatefulWidget {
   @override
   State<MarkAttendancePage> createState() => _MarkAttendancePageState();
 }
-
+@pragma('vm:entry-point')
 class _MarkAttendancePageState extends State<MarkAttendancePage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   // State Management
   AppState _state = AppState.initial();
   final StatePersistenceService _stateService = StatePersistenceService();
-  
+
   // Controllers and Timers
   Timer? _timer;
   Timer? _syncTimer;
@@ -64,7 +65,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
   String? _lastSnackMessage;
   DateTime? _lastSnackTime;
   final Duration _snackDebounce = const Duration(seconds: 4);
-  
+
   // Performance optimization
   DateTime _lastLocationUpdate = DateTime.now();
   DateTime _lastLocationStore = DateTime.now();
@@ -77,30 +78,63 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
   // Timer debugging
   int _timerTickCount = 0;
   DateTime? _lastTimerTick;
-
+  
+  // Office geofence settings
+  // static const double officeLat = 18.50954783069657;
+  // static const double officeLng = 73.87062867788329;
+  static const double officeLat = 18.50568422219611; // testing 
+  static const double officeLng = 73.8336470358418; // testing
+  static const double allowedRadiusMeters = 150;  // You can set 50–300 meters
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initializeApp();
+void initState() {
+  super.initState();
+  WidgetsBinding.instance.addObserver(this);
+
+  _pulseController = AnimationController(
+    duration: Duration(seconds: 2), vsync: this);
+  _slideController = AnimationController(
+    duration: Duration(milliseconds: 500), vsync: this);
+
+  _pulseAnimation = Tween<double>(begin:1, end:1.1).animate(
+    CurvedAnimation(parent:_pulseController, curve:Curves.easeInOut));
+
+  _slideAnimation = Tween<Offset>(begin:Offset(0,-1), end:Offset.zero).animate(
+    CurvedAnimation(parent:_slideController, curve:Curves.elasticOut));
+
+  _initializeApp();
+  _fetchLocation();
+}
+  Future<void> _fetchLocation() async {
+  try {
+    final pos = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+      timeLimit: const Duration(seconds: 10),
+    );
+
+    setState(() {
+      _currentPosition = pos;
+    });
+  } catch (e) {
+    print("Location error: $e");
   }
+}
 
   Future<void> _initializeApp() async {
     if (_isDisposed) return;
-    
+
     try {
       // Initialize state first
       _state = await _stateService.loadAppState();
-      
+
       // Initialize animations
-      _initializeAnimations();
-      
+      // _initializeAnimations();
+
       // Initialize services in sequence
       await _initializeNotifications();
       await _checkLocationPermission();
       await _initializeUserData();
       await _initializeBackgroundService();
-      
+
       // Start periodic tasks
       _startPeriodicSync();
       _startPeriodicStateSave();
@@ -109,7 +143,9 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       await _recoverApprovalState();
 
       // Auto-start timer if user is logged in
-      if (_state.isLoggedIn && _state.loginTime != null && !_state.isWaitingForApproval) {
+      if (_state.isLoggedIn &&
+          _state.loginTime != null &&
+          !_state.isWaitingForApproval) {
         _startTimer();
         _startLocationTracking();
         _updateNotification();
@@ -122,37 +158,47 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       }
 
       _startInstructionsTimer();
-      
     } catch (e, stackTrace) {
       _logError('Error initializing app', e, stackTrace);
       _handleError('Failed to initialize app. Please restart.');
     }
   }
+
   Future<void> _initializeUserData() async {
     if (_isDisposed) return;
 
     try {
       final User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
-        _updateState(_state.copyWith(
-          userName: "Please Sign In",
-          userId: "",
-          empId: "",
-          shift: "",  
-        ));
+        _updateState(
+          _state.copyWith(
+            userName: "Please Sign In",
+            userId: "",
+            empId: "",
+            shift: "",
+            workLocation: "",
+          ),
+        );
         return;
       }
 
       // Try to load cached user data first
       final cachedUserData = await _stateService.loadUserData();
-      if (cachedUserData['userName']!.isNotEmpty && 
-          cachedUserData['empId']!.isNotEmpty) {
-        _updateState(_state.copyWith(
-          userName: cachedUserData['userName']!,
-          empId: cachedUserData['empId']!,
-          userId: currentUser.uid,
-          shift: cachedUserData['shift']!,
-        ));
+
+      final cachedName = cachedUserData['userName'] ?? '';
+      final cachedEmpId = cachedUserData['empId'] ?? '';
+      final cachedShift = cachedUserData['shift'] ?? '';
+      final cachedWorkLocation = cachedUserData['workLocation'] ?? '';
+      if (cachedName.isNotEmpty && cachedEmpId.isNotEmpty) {
+        _updateState(
+          _state.copyWith(
+            userName: cachedName,
+            empId: cachedEmpId,
+            userId: currentUser.uid,
+            shift: cachedShift,
+            workLocation: cachedWorkLocation,
+          ),
+        );
       }
 
       // Fetch fresh data from Firestore
@@ -163,24 +209,34 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
           .timeout(const Duration(seconds: 10));
 
       if (snapshot.exists) {
-        final Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
+        final Map<String, dynamic> data =
+            snapshot.data() as Map<String, dynamic>;
         final Employee employee = Employee.fromMap(data);
-        
-        _updateState(_state.copyWith(
-          userName: employee.empName,
-          empId: employee.empCode.isNotEmpty ? employee.empCode : employee.uid,
-          userId: currentUser.uid,
-          shift: employee.shift,
-        ));
 
-        await _stateService.saveUserData(employee.empName, employee.empCode, currentUser.uid , employee.shift);
+        _updateState(
+          _state.copyWith(
+            userName: employee.empName,
+            empId: employee.empCode.isNotEmpty
+                ? employee.empCode
+                : employee.uid,
+            userId: currentUser.uid,
+            shift: employee.shift,
+            workLocation: employee.workLocation,
+          ),
+        );
+
+        await _stateService.saveUserData(
+          employee.empName,
+          employee.empCode,
+          currentUser.uid,
+          employee.shift,
+          employee.workLocation,
+        );
         _setupUserDataListener(currentUser.uid);
       } else {
-        _updateState(_state.copyWith(
-          userName: "Employee Data Not Found",
-          empId: "",
-
-        ));
+        _updateState(
+          _state.copyWith(userName: "Employee Data Not Found", empId: ""),
+        );
       }
     } catch (e, stackTrace) {
       _logError('Error initializing user data', e, stackTrace);
@@ -193,47 +249,72 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       }
     }
   }
+
   void _startPeriodicSync() {
+    try {
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(_syncInterval, (timer) async {
       if (!_isDisposed && !_isSyncing && _state.isLoggedIn) {
         await _syncWithFirestore();
       }
     });
+    }catch(e){
+      print(e);
+    }
   }
 
   void _startPeriodicStateSave() {
+    try {
     Timer.periodic(const Duration(minutes: 5), (timer) {
       if (!_isDisposed) {
         _stateService.saveAppState(_state);
       }
     });
+    }catch(e){
+      print(e);
+    }
   }
 
   void _setupUserDataListener(String userId) {
+    if (_isDisposed) return;
     _userDataListener?.cancel();
     _userDataListener = FirebaseFirestore.instance
         .collection('users')
         .doc(userId)
         .snapshots()
-        .listen((snapshot) {
-          if (snapshot.exists && mounted && !_isDisposed) {
-            try {
-              final Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
-              final Employee employee = Employee.fromMap(data);
-              _updateState(_state.copyWith(
-                userName: employee.empName,
-                empId: employee.empCode.isNotEmpty ? employee.empCode : userId,
-                shift: employee.shift,
-              ));
-              _stateService.saveUserData(employee.empName, employee.empCode, userId , employee.shift);
-            } catch (e, stackTrace) {
-              _logError('Error in user data listener', e, stackTrace);
+        .listen(
+          (snapshot) {
+            if (snapshot.exists && mounted && !_isDisposed) {
+              try {
+                final Map<String, dynamic> data =
+                    snapshot.data() as Map<String, dynamic>;
+                final Employee employee = Employee.fromMap(data);
+                _updateState(
+                  _state.copyWith(
+                    userName: employee.empName,
+                    empId: employee.empCode.isNotEmpty
+                        ? employee.empCode
+                        : userId,
+                    shift: employee.shift,
+                    workLocation: employee.workLocation,
+                  ),
+                );
+                _stateService.saveUserData(
+                  employee.empName,
+                  employee.empCode,
+                  userId,
+                  employee.shift,
+                  employee.workLocation,
+                );
+              } catch (e, stackTrace) {
+                _logError('Error in user data listener', e, stackTrace);
+              }
             }
-          }
-        }, onError: (error) {
-          _logError('Error in user data listener', error, null);
-        });
+          },
+          onError: (error) {
+            _logError('Error in user data listener', error, null);
+          },
+        );
   }
 
   Future<void> _checkLocationPermission() async {
@@ -243,7 +324,9 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted && !_isDisposed) {
-          _updateState(_state.copyWith(currentCoordinates: 'Location service disabled'));
+          _updateState(
+            _state.copyWith(currentCoordinates: 'Location service disabled'),
+          );
         }
         return;
       }
@@ -253,7 +336,9 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           if (mounted && !_isDisposed) {
-            _updateState(_state.copyWith(currentCoordinates: 'Location permission denied'));
+            _updateState(
+              _state.copyWith(currentCoordinates: 'Location permission denied'),
+            );
           }
           return;
         }
@@ -261,7 +346,11 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
 
       if (permission == LocationPermission.deniedForever) {
         if (mounted && !_isDisposed) {
-          _updateState(_state.copyWith(currentCoordinates: 'Location permission permanently denied'));
+          _updateState(
+            _state.copyWith(
+              currentCoordinates: 'Location permission permanently denied',
+            ),
+          );
         }
         return;
       }
@@ -274,7 +363,9 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     } catch (e, stackTrace) {
       _logError('Error checking location permission', e, stackTrace);
       if (mounted && !_isDisposed) {
-        _updateState(_state.copyWith(currentCoordinates: 'Error checking location'));
+        _updateState(
+          _state.copyWith(currentCoordinates: 'Error checking location'),
+        );
       }
     }
   }
@@ -282,27 +373,27 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
   Future<void> _recoverApprovalState() async {
     try {
       final approvalState = await _stateService.loadApprovalState();
-      
-      if (approvalState['isWaitingForApproval'] == true && 
+      if (approvalState['isWaitingForApproval'] == true &&
           approvalState['pendingApprovalId'] != null) {
-        
         final approvalId = approvalState['pendingApprovalId']!;
         final requestTime = approvalState['approvalRequestTime'];
-        
+
         // Check if approval request is expired
-        if (requestTime != null && 
+        if (requestTime != null &&
             DateTime.now().difference(requestTime).inHours >= 24) {
           await _handleExpiredApproval(approvalId);
           return;
         }
-        
+
         // Restore approval waiting state
-        _updateState(_state.copyWith(
-          isWaitingForApproval: true,
-          pendingApprovalId: approvalId,
-          approvalRequestTime: requestTime,
-        ));
-        
+        _updateState(
+          _state.copyWith(
+            isWaitingForApproval: true,
+            pendingApprovalId: approvalId,
+            approvalRequestTime: requestTime,
+          ),
+        );
+
         // Re-establish listener
         _listenForApproval(approvalId);
       }
@@ -310,6 +401,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _logError('Error recovering approval state', e, stackTrace);
     }
   }
+
   Future<void> _handleExpiredApproval(String approvalId) async {
     try {
       await FirebaseFirestore.instance
@@ -322,16 +414,18 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     } catch (e) {
       _logError('Error marking approval as expired', e, null);
     }
-    
-    _updateState(_state.copyWith(
-      isWaitingForApproval: false,
-      loginTime: null,
-      pendingApprovalId: null,
-      approvalRequestTime: null,
-    ));
-    
+
+    _updateState(
+      _state.copyWith(
+        isWaitingForApproval: false,
+        loginTime: null,
+        pendingApprovalId: null,
+        approvalRequestTime: null,
+      ),
+    );
+
     await _stateService.clearApprovalState();
-    
+
     _safeShowSnackBar(
       '⏰ Approval request expired after 24 hours. Please login again.',
       backgroundColor: Colors.orange,
@@ -339,6 +433,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       durationSeconds: 6,
     );
   }
+
   void _listenForApproval(String approvalId) {
     _approvalListener?.cancel();
 
@@ -346,46 +441,53 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
         .collection('loginApprovals')
         .doc(approvalId)
         .snapshots()
-        .listen((snapshot) {
-          if (!snapshot.exists || _isDisposed) return;
+        .listen(
+          (snapshot) {
+            if (!snapshot.exists || _isDisposed) return;
 
-          try {
-            Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
-            String status = data['status'] ?? 'pending';
+            try {
+              Map<String, dynamic> data =
+                  snapshot.data() as Map<String, dynamic>;
+              String status = data['status'] ?? 'pending';
 
-            if (status == 'approved') {
-              _approvalListener?.cancel();
-              if (mounted && !_isDisposed) {
-                _updateState(_state.copyWith(isWaitingForApproval: false));
-                _completeLogin();
-                _safeShowSnackBar(
-                  'Login approved by ${data['approvedBy'] ?? 'Admin'}',
-                  backgroundColor: Colors.green,
-                  icon: Icons.check_circle,
-                );
+              if (status == 'approved') {
+                _approvalListener?.cancel();
+                if (mounted && !_isDisposed) {
+                  _updateState(_state.copyWith(isWaitingForApproval: false));
+                  _completeLogin();
+                  _safeShowSnackBar(
+                    'Login approved by ${data['approvedBy'] ?? 'Admin'}',
+                    backgroundColor: Colors.green,
+                    icon: Icons.check_circle,
+                  );
+                }
+              } else if (status == 'rejected') {
+                _approvalListener?.cancel();
+                if (mounted && !_isDisposed) {
+                  _updateState(
+                    _state.copyWith(
+                      isWaitingForApproval: false,
+                      loginTime: null,
+                    ),
+                  );
+                  _safeShowSnackBar(
+                    'Login request rejected: ${data['rejectionReason'] ?? 'No reason provided'}',
+                    backgroundColor: Colors.red,
+                    icon: Icons.cancel,
+                    durationSeconds: 5,
+                  );
+                }
               }
-            } else if (status == 'rejected') {
-              _approvalListener?.cancel();
-              if (mounted && !_isDisposed) {
-                _updateState(_state.copyWith(
-                  isWaitingForApproval: false,
-                  loginTime: null,
-                ));
-                _safeShowSnackBar(
-                  'Login request rejected: ${data['rejectionReason'] ?? 'No reason provided'}',
-                  backgroundColor: Colors.red,
-                  icon: Icons.cancel,
-                  durationSeconds: 5,
-                );
-              }
+            } catch (e, stackTrace) {
+              _logError('Error in approval listener', e, stackTrace);
             }
-          } catch (e, stackTrace) {
-            _logError('Error in approval listener', e, stackTrace);
-          }
-        }, onError: (error) {
-          _logError('Error in approval listener', error, null);
-        });
+          },
+          onError: (error) {
+            _logError('Error in approval listener', error, null);
+          },
+        );
   }
+
   Future<void> _updateNotification() async {
     if (!_state.isLoggedIn) {
       await _notificationsPlugin.cancel(1);
@@ -431,6 +533,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _logError('Error updating notification', e, stackTrace);
     }
   }
+
   void _startInstructionsTimer() {
     Timer(const Duration(seconds: 10), () {
       if (mounted && !_isDisposed && !_state.isLoggedIn) {
@@ -471,6 +574,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
   }
 
   Future<void> _initializeBackgroundService() async {
+    if (kIsWeb) return;
     try {
       final service = FlutterBackgroundService();
 
@@ -494,11 +598,12 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _logError('Error initializing background service', e, stackTrace);
     }
   }
-  
+
   @pragma('vm:entry-point')
   static bool _onIosBackground(ServiceInstance service) {
     return true;
   }
+  @pragma('vm:entry-point')
   static Future<void> _onStart(ServiceInstance service) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
@@ -514,10 +619,15 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       );
 
       final String? loginTimeStr = prefs.getString(PersistenceKeys.bgLoginTime);
-      final String? breakStartTimeStr = prefs.getString(PersistenceKeys.bgBreakStartTime);
-      final int totalBreakSeconds = prefs.getInt(PersistenceKeys.bgTotalBreakDurationSeconds) ?? 0;
-      final bool isOnBreak = prefs.getBool(PersistenceKeys.bgIsOnBreak) ?? false;
-      final bool isLoggedIn = prefs.getBool(PersistenceKeys.bgIsLoggedIn) ?? false;
+      final String? breakStartTimeStr = prefs.getString(
+        PersistenceKeys.bgBreakStartTime,
+      );
+      final int totalBreakSeconds =
+          prefs.getInt(PersistenceKeys.bgTotalBreakDurationSeconds) ?? 0;
+      final bool isOnBreak =
+          prefs.getBool(PersistenceKeys.bgIsOnBreak) ?? false;
+      final bool isLoggedIn =
+          prefs.getBool(PersistenceKeys.bgIsLoggedIn) ?? false;
 
       if (!isLoggedIn || loginTimeStr == null) {
         timer.cancel();
@@ -566,48 +676,52 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       });
     });
   }
-  
+  @pragma('vm:entry-point')
   static String _formatDurationStatic(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, "0");
     final String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
     final String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
     return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
   }
-  void _initializeAnimations() {
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    );
 
-    _slideController = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    );
+  // void _initializeAnimations() {
+  //  try { _pulseController = AnimationController(
+  //     duration: const Duration(seconds: 2),
+  //     vsync: this,
+  //   );
 
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
+  //   _slideController = AnimationController(
+  //     duration: const Duration(milliseconds: 500),
+  //     vsync: this,
+  //   );
 
-    _slideAnimation = Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero)
-        .animate(
-          CurvedAnimation(parent: _slideController, curve: Curves.elasticOut),
-        );
+  //   _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+  //     CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+  //   );
 
-    if (!_state.isLoggedIn) {
-      _pulseController.repeat(reverse: true);
-    }
-    _slideController.forward();
-  }
+  //   _slideAnimation =
+  //       Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(
+  //         CurvedAnimation(parent: _slideController, curve: Curves.elasticOut),
+  //       );
 
-  // ... [Keep all your existing service initialization methods exactly as they are]
-  // _initializeNotifications, _initializeBackgroundService, _initializeUserData, etc.
+  //   if (!_state.isLoggedIn) {
+  //     _pulseController.repeat(reverse: true);
+  //   }
+  //   _slideController.forward();
+  //   }catch(e){
+  //     print(e);
+  //   }
+  // }
 
   // FIXED TIMER IMPLEMENTATION
   void _startTimer() {
     _timer?.cancel(); // Always cancel existing timer first
-    
+
     if (_isDisposed || !_state.isLoggedIn || _state.loginTime == null) {
-      if (kDebugMode) print('⏰ Timer not started: disposed=$_isDisposed, loggedIn=${_state.isLoggedIn}, loginTime=${_state.loginTime}');
+      if (kDebugMode)
+        print(
+          '⏰ Timer not started: disposed=$_isDisposed, loggedIn=${_state.isLoggedIn}, loginTime=${_state.loginTime}',
+        );
       return;
     }
 
@@ -618,25 +732,34 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _timerTickCount++;
       _lastTimerTick = DateTime.now();
-      
-      if (!mounted || _isDisposed || !_state.isLoggedIn || _state.loginTime == null) {
-        if (kDebugMode) print('⏰ Timer cancelled: mounted=$mounted, disposed=$_isDisposed, loggedIn=${_state.isLoggedIn}');
+
+      if (!mounted ||
+          _isDisposed ||
+          !_state.isLoggedIn ||
+          _state.loginTime == null) {
+        if (kDebugMode)
+          print(
+            '⏰ Timer cancelled: mounted=$mounted, disposed=$_isDisposed, loggedIn=${_state.isLoggedIn}',
+          );
         timer.cancel();
         return;
       }
-      
+
       try {
         _updateWorkDuration();
-        
+
         // Throttle notification updates
-        if (DateTime.now().difference(_lastNotificationUpdate) > _notificationUpdateInterval) {
+        if (DateTime.now().difference(_lastNotificationUpdate) >
+            _notificationUpdateInterval) {
           _updateNotification();
           _lastNotificationUpdate = DateTime.now();
         }
 
         // Debug logging every 30 seconds
         if (_timerTickCount % 30 == 0 && kDebugMode) {
-          print('⏰ Timer active - ticks: $_timerTickCount, work: ${_formatDuration(_state.workDuration)}');
+          print(
+            '⏰ Timer active - ticks: $_timerTickCount, work: ${_formatDuration(_state.workDuration)}',
+          );
         }
       } catch (e, stackTrace) {
         _logError('Timer error', e, stackTrace);
@@ -654,11 +777,15 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
 
     if (!_state.isOnBreak) {
       // Normal working time calculation
-      newWorkDuration = now.difference(_state.loginTime!) - _state.totalBreakDurationToday;
+      newWorkDuration =
+          now.difference(_state.loginTime!) - _state.totalBreakDurationToday;
     } else if (_state.breakStartTime != null) {
       // On break - subtract current break duration
       Duration currentBreak = now.difference(_state.breakStartTime!);
-      newWorkDuration = now.difference(_state.loginTime!) - _state.totalBreakDurationToday - currentBreak;
+      newWorkDuration =
+          now.difference(_state.loginTime!) -
+          _state.totalBreakDurationToday -
+          currentBreak;
     } else {
       // Fallback
       newWorkDuration = _state.workDuration;
@@ -670,11 +797,14 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     }
 
     // Only update state if values actually changed
-    if (newWorkDuration != _state.workDuration || newRemainingShiftTime != _state.remainingShiftTime) {
-      _updateState(_state.copyWith(
-        workDuration: newWorkDuration,
-        remainingShiftTime: newRemainingShiftTime,
-      ));
+    if (newWorkDuration != _state.workDuration ||
+        newRemainingShiftTime != _state.remainingShiftTime) {
+      _updateState(
+        _state.copyWith(
+          workDuration: newWorkDuration,
+          remainingShiftTime: newRemainingShiftTime,
+        ),
+      );
     }
   }
 
@@ -707,7 +837,8 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     if (_isDisposed || _isGettingLocation) return;
 
     // Throttle location updates
-    if (DateTime.now().difference(_lastLocationUpdate) < _locationUpdateInterval) {
+    if (DateTime.now().difference(_lastLocationUpdate) <
+        _locationUpdateInterval) {
       return;
     }
 
@@ -747,9 +878,11 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _isGettingLocation = false;
     }
   }
+
   Future<void> _storeLocationInHistory(String activityType) async {
     // Rate limiting for Firestore writes - store every 30 seconds only
-    if (DateTime.now().difference(_lastLocationStore) < _locationStoreInterval) {
+    if (DateTime.now().difference(_lastLocationStore) <
+        _locationStoreInterval) {
       return;
     }
 
@@ -759,7 +892,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
         _state.todayAttendanceId == null) {
       return;
     }
-    
+
     try {
       double distanceMoved = 0.0;
       if (_lastStoredPosition != null && _currentPosition != null) {
@@ -768,10 +901,14 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
           _currentPosition!,
         );
 
-        if (distanceMoved > 10) { // Only count significant movements (>10 meters)
-          _updateState(_state.copyWith(
-            totalDistanceTraveled: _state.totalDistanceTraveled + (distanceMoved / 1000)
-          ));
+        if (distanceMoved > 10) {
+          // Only count significant movements (>10 meters)
+          _updateState(
+            _state.copyWith(
+              totalDistanceTraveled:
+                  _state.totalDistanceTraveled + (distanceMoved / 1000),
+            ),
+          );
         }
       }
 
@@ -807,6 +944,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _logError('Error storing location history', e, stackTrace);
     }
   }
+
   double _calculateDistance(Position start, Position end) {
     return Geolocator.distanceBetween(
       start.latitude,
@@ -815,25 +953,33 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       end.longitude,
     );
   }
+
   Future<void> _updateRealTimeLocation() async {
-    if (_isDisposed || !_state.isLoggedIn || _state.currentCoordinates.isEmpty) return;
+    if (_isDisposed || !_state.isLoggedIn || _state.currentCoordinates.isEmpty)
+      return;
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(_state.userId).update({
-        'currentLocation': _state.currentCoordinates,
-        'lastLocationUpdate': FieldValue.serverTimestamp(),
-        'isCurrentlyWorking': _state.isLoggedIn,
-        'isOnBreak': _state.isOnBreak,
-        'workStatus': _state.isOnBreak ? 'On Break' : 'Working',
-        'todayLoginTime': _state.loginTime?.toIso8601String(),
-        'currentWorkDuration': _formatDuration(_state.workDuration),
-        'currentBreakDuration': _formatDuration(_state.totalBreakDurationToday),
-        'totalDistanceTraveled': _state.totalDistanceTraveled,
-      });
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_state.userId)
+          .update({
+            'currentLocation': _state.currentCoordinates,
+            'lastLocationUpdate': FieldValue.serverTimestamp(),
+            'isCurrentlyWorking': _state.isLoggedIn,
+            'isOnBreak': _state.isOnBreak,
+            'workStatus': _state.isOnBreak ? 'On Break' : 'Working',
+            'todayLoginTime': _state.loginTime?.toIso8601String(),
+            'currentWorkDuration': _formatDuration(_state.workDuration),
+            'currentBreakDuration': _formatDuration(
+              _state.totalBreakDurationToday,
+            ),
+            'totalDistanceTraveled': _state.totalDistanceTraveled,
+          });
     } catch (e, stackTrace) {
       _logError('Error updating real-time location', e, stackTrace);
     }
   }
+
   // ENHANCED LOGIN WITH PROPER TIMER START
   Future<void> _completeLogin() async {
     if (_state.isLoggedIn) {
@@ -843,17 +989,19 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
 
     final now = DateTime.now();
 
-    _updateState(_state.copyWith(
-      isLoggedIn: true,
-      isOnBreak: false,
-      isWaitingForApproval: false,
-      loginTime: now,
-      workDuration: Duration.zero,
-      totalBreakDurationToday: Duration.zero,
-      totalDistanceTraveled: 0.0,
-      showInstructions: false,
-      remainingShiftTime: _calculateRemainingTime(),
-    ));
+    _updateState(
+      _state.copyWith(
+        isLoggedIn: true,
+        isOnBreak: false,
+        isWaitingForApproval: false,
+        loginTime: now,
+        workDuration: Duration.zero,
+        totalBreakDurationToday: Duration.zero,
+        totalDistanceTraveled: 0.0,
+        showInstructions: false,
+        remainingShiftTime: _calculateRemainingTime(),
+      ),
+    );
 
     // Persist keys used by the background service
     try {
@@ -866,7 +1014,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     } catch (e) {
       _logError('Error persisting login prefs', e, null);
     }
-    
+
     await _createTodayAttendanceRecord();
     await _updateAttendanceOnLogin();
     await _storeLocationInHistory('login');
@@ -886,7 +1034,9 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
 
     if (kDebugMode) print('✅ Login completed successfully - timers started');
   }
+
   Future<void> _startBackgroundService() async {
+    if (kIsWeb) return;
     try {
       final service = FlutterBackgroundService();
       bool isRunning = await service.isRunning();
@@ -898,7 +1048,8 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _logError('Error starting background service', e, stackTrace);
     }
   }
-   Future<void> _createTodayAttendanceRecord() async {
+
+  Future<void> _createTodayAttendanceRecord() async {
     if (_isDisposed) return;
 
     try {
@@ -922,9 +1073,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
               'empId': _state.empId,
               'date': dateKey,
               'day': dayName,
-              'shiftCode': 'GN',
-              'shiftInTime': '09:30 AM',
-              'shiftOutTime': '06:30 PM',
+              'shiftCode': _state.shift,
               'inTime': null,
               'outTime': null,
               'totHrs': 0.0,
@@ -944,7 +1093,9 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
 
         _updateState(_state.copyWith(todayAttendanceId: docRef.id));
       } else {
-        _updateState(_state.copyWith(todayAttendanceId: existing.docs.first.id));
+        _updateState(
+          _state.copyWith(todayAttendanceId: existing.docs.first.id),
+        );
       }
     } catch (e, stackTrace) {
       _logError('Error creating attendance record', e, stackTrace);
@@ -987,6 +1138,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       }
     }
   }
+
   double _calculateLateHours(DateTime actualInTime) {
     DateTime now = actualInTime;
     DateTime standardInTime = DateTime(now.year, now.month, now.day, 9, 30);
@@ -1017,13 +1169,22 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     // Then update UI and notifications
     await _notificationsPlugin.cancel(1);
 
-    _updateState(AppState.initial().copyWith(
-      userName: _state.userName,
-      userId: _state.userId,
-      empId: _state.empId,
-    ));
-
-    _pulseController.repeat(reverse: true);
+    _updateState(
+      AppState.initial().copyWith(
+        userName: _state.userName,
+        userId: _state.userId,
+        empId: _state.empId,
+      ),
+    );
+if (mounted && !_isDisposed) {
+  try {
+    if (!_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    }
+  } catch (e) {
+    if (kDebugMode) print('⚠️ AnimationController reuse skipped: $e');
+  }
+}
 
     // Clear background-service prefs on logout
     try {
@@ -1032,7 +1193,10 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       await prefs.remove(PersistenceKeys.bgLoginTime);
       await prefs.remove(PersistenceKeys.bgBreakStartTime);
       await prefs.setBool(PersistenceKeys.bgIsOnBreak, false);
-      await prefs.setInt(PersistenceKeys.bgTotalBreakDurationSeconds, _state.totalBreakDurationToday.inSeconds);
+      await prefs.setInt(
+        PersistenceKeys.bgTotalBreakDurationSeconds,
+        _state.totalBreakDurationToday.inSeconds,
+      );
     } catch (e) {
       _logError('Error clearing login prefs', e, null);
     }
@@ -1048,9 +1212,13 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       durationSeconds: 4,
     );
 
-    if (kDebugMode) print('✅ Logout completed successfully - all timers stopped');
+    if (kDebugMode)
+      print('✅ Logout completed successfully - all timers stopped');
   }
+
   Future<void> _stopBackgroundService() async {
+    if (kIsWeb) return;
+    if (_isDisposed) return;
     try {
       final service = FlutterBackgroundService();
       bool isRunning = await service.isRunning();
@@ -1061,6 +1229,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _logError('Error stopping background service', e, stackTrace);
     }
   }
+
   Future<void> _updateAttendanceOnLogout({String? reason}) async {
     if (_isDisposed) return;
 
@@ -1070,7 +1239,8 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
         String outTimeStr = DateFormat('h:mm a').format(logoutTime);
 
         Duration totalWork =
-            logoutTime.difference(_state.loginTime!) - _state.totalBreakDurationToday;
+            logoutTime.difference(_state.loginTime!) -
+            _state.totalBreakDurationToday;
         double totalHours = totalWork.inMinutes / 60.0;
         double shiftHours = _getShiftDuration().inMinutes / 60.0;
         double otHours = totalHours > shiftHours
@@ -1110,9 +1280,11 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       }
     }
   }
+
   Duration _getShiftDuration() {
     return const Duration(hours: 9);
   }
+
   void _stopLocationTracking() {
     _locationTimer?.cancel();
     _locationTimer = null;
@@ -1126,26 +1298,34 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
             'workStatus': 'Offline',
             'lastLocationUpdate': FieldValue.serverTimestamp(),
           })
-          .catchError((e) => _logError('Error updating offline status', e, null));
+          .catchError(
+            (e) => _logError('Error updating offline status', e, null),
+          );
     }
   }
+
   // ENHANCED BREAK MANAGEMENT
   Future<void> _startBreak() async {
     if (_isDisposed) return;
 
     await _getCurrentLocation();
 
-    _updateState(_state.copyWith(
-      isOnBreak: true,
-      breakStartTime: DateTime.now(),
-    ));
+    _updateState(
+      _state.copyWith(isOnBreak: true, breakStartTime: DateTime.now()),
+    );
 
     // Persist break start for background service
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(PersistenceKeys.bgIsOnBreak, true);
-      await prefs.setString(PersistenceKeys.bgBreakStartTime, DateTime.now().toIso8601String());
-      await prefs.setInt(PersistenceKeys.bgTotalBreakDurationSeconds, _state.totalBreakDurationToday.inSeconds);
+      await prefs.setString(
+        PersistenceKeys.bgBreakStartTime,
+        DateTime.now().toIso8601String(),
+      );
+      await prefs.setInt(
+        PersistenceKeys.bgTotalBreakDurationSeconds,
+        _state.totalBreakDurationToday.inSeconds,
+      );
     } catch (e) {
       _logError('Error persisting break start prefs', e, null);
     }
@@ -1182,18 +1362,24 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
         ? DateTime.now().difference(_state.breakStartTime!)
         : Duration.zero;
 
-    _updateState(_state.copyWith(
-      isOnBreak: false,
-      totalBreakDurationToday: _state.totalBreakDurationToday + currentBreakDuration,
-      breakStartTime: null,
-    ));
+    _updateState(
+      _state.copyWith(
+        isOnBreak: false,
+        totalBreakDurationToday:
+            _state.totalBreakDurationToday + currentBreakDuration,
+        breakStartTime: null,
+      ),
+    );
 
     // Persist break end for background service
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(PersistenceKeys.bgIsOnBreak, false);
       await prefs.remove(PersistenceKeys.bgBreakStartTime);
-      await prefs.setInt(PersistenceKeys.bgTotalBreakDurationSeconds, _state.totalBreakDurationToday.inSeconds);
+      await prefs.setInt(
+        PersistenceKeys.bgTotalBreakDurationSeconds,
+        _state.totalBreakDurationToday.inSeconds,
+      );
     } catch (e) {
       _logError('Error persisting break end prefs', e, null);
     }
@@ -1233,13 +1419,16 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
           setState(() {
             _state = newState;
           });
-          
+
           _saveStateDebounceTimer?.cancel();
-          _saveStateDebounceTimer = Timer(const Duration(milliseconds: 500), () {
-            if (!_isDisposed) {
-              _stateService.saveAppState(newState);
-            }
-          });
+          _saveStateDebounceTimer = Timer(
+            const Duration(milliseconds: 500),
+            () {
+              if (!_isDisposed) {
+                _stateService.saveAppState(newState);
+              }
+            },
+          );
         }
       });
     }
@@ -1250,14 +1439,14 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (kDebugMode) print('🔄 App lifecycle: $state');
-    
+
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        if (_state.isLoggedIn) {
-          _startBackgroundService();
-        }
-        break;
+      if (!kIsWeb && _state.isLoggedIn) {
+    _startBackgroundService();
+  }
+  break;
       case AppLifecycleState.resumed:
         _syncWithFirestore();
         _stopBackgroundService();
@@ -1279,29 +1468,29 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
   void dispose() {
     _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
-    
+
     // Cancel all timers in correct order
     _saveStateDebounceTimer?.cancel();
     _timer?.cancel();
     _syncTimer?.cancel();
     _locationTimer?.cancel();
-    
+
     // Cancel all subscriptions
     _approvalListener?.cancel();
     _userDataListener?.cancel();
-    
+
     // Dispose controllers
     _pulseController.dispose();
     _slideController.dispose();
-    
+
     // Stop services
     _stopAllServices();
-    
+
     // Save final state
     _stateService.saveAppState(_state);
-    
+
     if (kDebugMode) print('🧹 MarkAttendancePage disposed properly');
-    
+
     super.dispose();
   }
 
@@ -1327,10 +1516,10 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
     if (_isDisposed || _isSyncing || _state.userId.isEmpty) return;
 
     _isSyncing = true;
-    
+
     try {
       final String today = DateFormat('dd-MMM-yy').format(DateTime.now());
-      
+
       final QuerySnapshot attendanceQuery = await FirebaseFirestore.instance
           .collection('attendance')
           .where('userId', isEqualTo: _state.userId)
@@ -1361,6 +1550,7 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _isSyncing = false;
     }
   }
+
   Future<void> _handleNoAttendanceRecord() async {
     if (_state.isLoggedIn) {
       await _createTodayAttendanceRecord();
@@ -1369,7 +1559,11 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       }
     }
   }
-  Future<void> _handleExistingAttendance(DocumentSnapshot doc, String today) async {
+
+  Future<void> _handleExistingAttendance(
+    DocumentSnapshot doc,
+    String today,
+  ) async {
     try {
       final data = doc.data() as Map<String, dynamic>;
       final attendance = Attendance.fromFirestore(doc);
@@ -1385,7 +1579,10 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       } else if (attendance.outTime != null && _state.isLoggedIn) {
         // Server indicates this day's attendance has an outTime (user logged out remotely).
         // Do NOT perform an automatic logout — require user to tap Logout manually.
-        if (kDebugMode) print('ℹ️ Remote outTime detected for attendance ${attendance.id}; not auto-logging out.');
+        if (kDebugMode)
+          print(
+            'ℹ️ Remote outTime detected for attendance ${attendance.id}; not auto-logging out.',
+          );
 
         // Update stored todayAttendanceId so UI reflects server record, but keep user logged in.
         _updateState(_state.copyWith(todayAttendanceId: attendance.id));
@@ -1402,30 +1599,35 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
       _logError('Error handling existing attendance', e, stackTrace);
     }
   }
-Future<void> _restoreLoginState(Attendance attendance) async {
+
+  Future<void> _restoreLoginState(Attendance attendance) async {
     try {
       final parsedLoginTime = _parseTimeToToday(attendance.inTime!);
       DateTime? breakStartTime;
-      
+
       if (attendance.isOnBreak && attendance.breakStartTime != null) {
         breakStartTime = _parseTimeToToday(attendance.breakStartTime!);
       }
 
-      _updateState(_state.copyWith(
-        isLoggedIn: true,
-        isOnBreak: attendance.isOnBreak,
-        loginTime: parsedLoginTime,
-        breakStartTime: breakStartTime,
-        todayAttendanceId: attendance.id,
-        totalBreakDurationToday: Duration(seconds: attendance.totalBreakSeconds),
-        totalDistanceTraveled: attendance.totalDistanceTraveled,
-        showInstructions: false,
-      ));
+      _updateState(
+        _state.copyWith(
+          isLoggedIn: true,
+          isOnBreak: attendance.isOnBreak,
+          loginTime: parsedLoginTime,
+          breakStartTime: breakStartTime,
+          todayAttendanceId: attendance.id,
+          totalBreakDurationToday: Duration(
+            seconds: attendance.totalBreakSeconds,
+          ),
+          totalDistanceTraveled: attendance.totalDistanceTraveled,
+          showInstructions: false,
+        ),
+      );
 
       _startTimer();
       _startLocationTracking();
       await _updateNotification();
-      
+
       _safeShowSnackBar(
         'Session restored from server',
         backgroundColor: Colors.green,
@@ -1448,67 +1650,74 @@ Future<void> _restoreLoginState(Attendance attendance) async {
       return DateTime.now();
     }
   }
-   Widget _buildLoadingWidget() {
-    return Column(children: [
-      Container(
-        width: 160, 
-        height: 160,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle, 
-          color: Colors.grey[300],
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.3), 
-              spreadRadius: 8, 
-              blurRadius: 20, 
-              offset: const Offset(0, 5)
-            )
-          ],
+
+  Widget _buildLoadingWidget() {
+    return Column(
+      children: [
+        Container(
+          width: 160,
+          height: 160,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.grey[300],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.3),
+                spreadRadius: 8,
+                blurRadius: 20,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                strokeWidth: 3,
+              ),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.hourglass_empty,
+                    color: Colors.grey,
+                    size: 40,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'LOADING',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        child: Stack(
-          alignment: Alignment.center, 
-          children: [
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue), 
-              strokeWidth: 3
-            ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center, 
-              children: [
-                const Icon(Icons.hourglass_empty, color: Colors.grey, size: 40), 
-                const SizedBox(height: 8),
-                const Text(
-                  'LOADING', 
-                  style: TextStyle(
-                    color: Colors.grey, 
-                    fontSize: 16, 
-                    fontWeight: FontWeight.bold
-                  )
-                ),
-              ]
-            ),
-          ]
+        const SizedBox(height: 16),
+        const Text(
+          'Initializing...',
+          style: TextStyle(
+            color: Colors.grey,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+          textAlign: TextAlign.center,
         ),
-      ),
-      const SizedBox(height: 16),
-      const Text(
-        'Initializing...', 
-        style: TextStyle(
-          color: Colors.grey, 
-          fontSize: 16, 
-          fontWeight: FontWeight.w600
-        ), 
-        textAlign: TextAlign.center
-      ),
-    ]);
+      ],
+    );
   }
 
   Widget _buildApprovalWaitingWidget() {
     final requestTime = _state.approvalRequestTime;
-    final timeSinceRequest = requestTime != null 
-        ? DateTime.now().difference(requestTime) 
+    final timeSinceRequest = requestTime != null
+        ? DateTime.now().difference(requestTime)
         : Duration.zero;
-    
+
     return Column(
       children: [
         Container(
@@ -1536,7 +1745,11 @@ Future<void> _restoreLoginState(Attendance attendance) async {
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.hourglass_empty, color: Colors.white, size: 40),
+                  const Icon(
+                    Icons.hourglass_empty,
+                    color: Colors.white,
+                    size: 40,
+                  ),
                   const SizedBox(height: 8),
                   const Text(
                     'WAITING',
@@ -1549,10 +1762,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
                   const SizedBox(height: 4),
                   Text(
                     '${_state.approvalRetryCount}/3',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                 ],
               ),
@@ -1601,14 +1811,16 @@ Future<void> _restoreLoginState(Attendance attendance) async {
       ],
     );
   }
-  
+
   Future<void> _showCancelApprovalDialog() async {
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
           title: Row(
             children: [
               const Icon(Icons.cancel, color: Colors.red),
@@ -1616,7 +1828,9 @@ Future<void> _restoreLoginState(Attendance attendance) async {
               const Text('Cancel Approval Request'),
             ],
           ),
-          content: const Text('Are you sure you want to cancel this login approval request?'),
+          content: const Text(
+            'Are you sure you want to cancel this login approval request?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -1653,17 +1867,19 @@ Future<void> _restoreLoginState(Attendance attendance) async {
         if (kDebugMode) print('❌ Error cancelling approval: $e');
       }
     }
-    
+
     _cleanupApprovalListeners();
-    _updateState(_state.copyWith(
-      isWaitingForApproval: false,
-      loginTime: null,
-      pendingApprovalId: null,
-      approvalRequestTime: null,
-    ));
-    
+    _updateState(
+      _state.copyWith(
+        isWaitingForApproval: false,
+        loginTime: null,
+        pendingApprovalId: null,
+        approvalRequestTime: null,
+      ),
+    );
+
     await _stateService.clearApprovalState();
-    
+
     _safeShowSnackBar(
       'Approval request cancelled',
       backgroundColor: Colors.grey,
@@ -1679,10 +1895,11 @@ Future<void> _restoreLoginState(Attendance attendance) async {
 
   Future<void> _manualCheckApprovalStatus() async {
     if (_isDisposed || !mounted) {
-      if (kDebugMode) print('⚠️ Manual check aborted - disposed or not mounted');
+      if (kDebugMode)
+        print('⚠️ Manual check aborted - disposed or not mounted');
       return;
     }
-    
+
     final approvalId = _state.pendingApprovalId;
     if (approvalId == null || !_state.isWaitingForApproval) {
       _safeShowSnackBar(
@@ -1693,7 +1910,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
       );
       return;
     }
-    
+
     // Show loading state
     _safeShowSnackBar(
       '🔍 Checking approval status...',
@@ -1701,15 +1918,15 @@ Future<void> _restoreLoginState(Attendance attendance) async {
       icon: Icons.refresh,
       durationSeconds: 2,
     );
-    
+
     try {
       // Add a small delay to show the loading state
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       final result = await _performComprehensiveStatusCheck(approvalId);
-      
+
       if (_isDisposed) return;
-      
+
       switch (result.status) {
         case 'approved':
           _safeShowSnackBar(
@@ -1719,7 +1936,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
             durationSeconds: 3,
           );
           break;
-          
+
         case 'rejected':
           _safeShowSnackBar(
             '❌ Request rejected: ${result.reason}',
@@ -1728,7 +1945,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
             durationSeconds: 5,
           );
           break;
-          
+
         case 'pending':
           final waitingTime = _getFormattedWaitingTime();
           _safeShowSnackBar(
@@ -1738,7 +1955,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
             durationSeconds: 4,
           );
           break;
-          
+
         case 'expired':
           _safeShowSnackBar(
             '⏰ Approval request expired',
@@ -1747,7 +1964,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
             durationSeconds: 4,
           );
           break;
-          
+
         case 'cancelled':
           _safeShowSnackBar(
             '🚫 Approval request was cancelled',
@@ -1756,7 +1973,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
             durationSeconds: 4,
           );
           break;
-          
+
         default:
           _safeShowSnackBar(
             '❓ Unknown status: ${result.status}',
@@ -1765,56 +1982,62 @@ Future<void> _restoreLoginState(Attendance attendance) async {
             durationSeconds: 4,
           );
       }
-      
     } catch (e) {
       if (kDebugMode) print('❌ Manual status check failed: $e');
-      
+
       if (_isDisposed) return;
-      
+
       _safeShowSnackBar(
         '🌐 Network error - Could not check status',
         backgroundColor: Colors.red,
         icon: Icons.wifi_off,
         durationSeconds: 4,
       );
-      
+
       // Update retry count
       final newRetryCount = _state.approvalRetryCount + 1;
       _updateState(_state.copyWith(approvalRetryCount: newRetryCount));
     }
   }
+
   String _getFormattedWaitingTime() {
     final requestTime = _state.approvalRequestTime;
     if (requestTime == null) return 'Unknown time';
-    
+
     final waitingDuration = DateTime.now().difference(requestTime);
     final hours = waitingDuration.inHours;
     final minutes = waitingDuration.inMinutes.remainder(60);
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m';
     } else {
       return '${minutes}m';
     }
   }
-  Future<ApprovalCheckResult> _performComprehensiveStatusCheck(String approvalId) async {
+
+  Future<ApprovalCheckResult> _performComprehensiveStatusCheck(
+    String approvalId,
+  ) async {
     try {
       // 1. First attempt - direct document fetch
       final doc = await FirebaseFirestore.instance
           .collection('loginApprovals')
           .doc(approvalId)
           .get()
-          .timeout(const Duration(seconds: 15), onTimeout: () {
-            throw TimeoutException('Firestore query timeout');
-          });
-      
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              throw TimeoutException('Firestore query timeout');
+            },
+          );
+
       if (!doc.exists) {
         return ApprovalCheckResult(
           status: 'missing',
           reason: 'Approval request not found in system',
         );
       }
-      
+
       final data = doc.data();
       if (data == null) {
         return ApprovalCheckResult(
@@ -1822,12 +2045,13 @@ Future<void> _restoreLoginState(Attendance attendance) async {
           reason: 'Approval data is corrupted',
         );
       }
-      
+
       final status = data['status']?.toString().toLowerCase() ?? 'pending';
-      final reason = data['rejectionReason']?.toString() ?? 
-                    data['notes']?.toString() ?? 
-                    'No reason provided';
-      
+      final reason =
+          data['rejectionReason']?.toString() ??
+          data['notes']?.toString() ??
+          'No reason provided';
+
       // If approved or rejected, trigger the appropriate handler
       if (status == 'approved' && mounted && !_isDisposed) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1838,13 +2062,8 @@ Future<void> _restoreLoginState(Attendance attendance) async {
           _handleApprovalUpdate(data);
         });
       }
-      
-      return ApprovalCheckResult(
-        status: status,
-        reason: reason,
-        data: data,
-      );
-      
+
+      return ApprovalCheckResult(status: status, reason: reason, data: data);
     } on TimeoutException catch (e) {
       if (kDebugMode) print('⏰ Status check timeout: $e');
       rethrow;
@@ -1856,11 +2075,12 @@ Future<void> _restoreLoginState(Attendance attendance) async {
       rethrow;
     }
   }
+
   void _handleApprovalUpdate(Map<String, dynamic> data) {
     if (_isDisposed) return;
-    
+
     final status = data['status'] ?? 'pending';
-    
+
     switch (status) {
       case 'approved':
         _handleApprovalApproved(data);
@@ -1874,60 +2094,68 @@ Future<void> _restoreLoginState(Attendance attendance) async {
         break;
     }
   }
-  
+
   void _updateApprovalWaitingUI(Map<String, dynamic> data) {
     if (_isDisposed || !mounted) return;
-    
+
     try {
       final timestamp = data['updatedAt'] as Timestamp?;
-      final lastUpdate = timestamp != null 
+      final lastUpdate = timestamp != null
           ? DateFormat('h:mm a').format(timestamp.toDate())
           : 'Unknown';
-      
+
       final requestedBy = data['approvedBy'] ?? 'Admin';
       final lateBy = data['lateBy'] ?? 0.0;
       final lateMinutes = (lateBy * 60).toInt();
-      
+
       // Update any relevant state for UI refresh
       if (mounted) {
         setState(() {
           // Force UI refresh to show updated information
         });
       }
-      
+
       // Log for debugging
       if (kDebugMode) {
-        print('📊 Approval Status Update - '
-            'Last Check: $lastUpdate, '
-            'Late by: ${lateMinutes}min, '
-            'Approver: $requestedBy');
+        print(
+          '📊 Approval Status Update - '
+          'Last Check: $lastUpdate, '
+          'Late by: ${lateMinutes}min, '
+          'Approver: $requestedBy',
+        );
       }
-      
+
       // Show periodic status updates to user (every 10 minutes)
       final requestTime = _state.approvalRequestTime;
       if (requestTime != null) {
         final waitingDuration = DateTime.now().difference(requestTime);
         final waitingMinutes = waitingDuration.inMinutes;
-        
+
         // Show status updates at specific intervals
-        if (waitingMinutes == 5 || waitingMinutes == 15 || waitingMinutes == 30 || waitingMinutes % 60 == 0) {
+        if (waitingMinutes == 5 ||
+            waitingMinutes == 15 ||
+            waitingMinutes == 30 ||
+            waitingMinutes % 60 == 0) {
           String statusMessage;
           Color backgroundColor;
-          
+
           if (waitingMinutes <= 30) {
-            statusMessage = 'Approval pending - ${waitingMinutes}m waiting '
+            statusMessage =
+                'Approval pending - ${waitingMinutes}m waiting '
                 '(Late by ${lateMinutes}min)';
             backgroundColor = Colors.orange;
           } else if (waitingMinutes <= 120) {
-            statusMessage = 'Still waiting for approval - ${waitingMinutes}m '
+            statusMessage =
+                'Still waiting for approval - ${waitingMinutes}m '
                 'Consider following up with your manager';
             backgroundColor = Colors.orange[700]!;
           } else {
-            statusMessage = 'Extended wait time - ${waitingMinutes}m '
+            statusMessage =
+                'Extended wait time - ${waitingMinutes}m '
                 'Please contact admin/HR directly';
             backgroundColor = Colors.red;
           }
-          
+
           _safeShowSnackBar(
             statusMessage,
             backgroundColor: backgroundColor,
@@ -1936,7 +2164,6 @@ Future<void> _restoreLoginState(Attendance attendance) async {
           );
         }
       }
-      
     } catch (e) {
       if (kDebugMode) print('❌ Error in updateApprovalWaitingUI: $e');
       // Don't crash the app due to UI update errors
@@ -1945,17 +2172,19 @@ Future<void> _restoreLoginState(Attendance attendance) async {
 
   void _handleApprovalApproved(Map<String, dynamic> data) {
     _cleanupApprovalListeners();
-    
-    _updateState(_state.copyWith(
-      isWaitingForApproval: false,
-      pendingApprovalId: null,
-      approvalRequestTime: null,
-      approvalRetryCount: 0,
-    ));
-    
+
+    _updateState(
+      _state.copyWith(
+        isWaitingForApproval: false,
+        pendingApprovalId: null,
+        approvalRequestTime: null,
+        approvalRetryCount: 0,
+      ),
+    );
+
     _stateService.clearApprovalState();
     _completeLogin();
-    
+
     _safeShowSnackBar(
       '✅ Login approved by ${data['approvedBy'] ?? 'Admin'}',
       backgroundColor: Colors.green,
@@ -1966,17 +2195,19 @@ Future<void> _restoreLoginState(Attendance attendance) async {
 
   void _handleApprovalRejected(Map<String, dynamic> data) {
     _cleanupApprovalListeners();
-    
-    _updateState(_state.copyWith(
-      isWaitingForApproval: false,
-      loginTime: null,
-      pendingApprovalId: null,
-      approvalRequestTime: null,
-      approvalRetryCount: 0,
-    ));
-    
+
+    _updateState(
+      _state.copyWith(
+        isWaitingForApproval: false,
+        loginTime: null,
+        pendingApprovalId: null,
+        approvalRequestTime: null,
+        approvalRetryCount: 0,
+      ),
+    );
+
     _stateService.clearApprovalState();
-    
+
     _safeShowSnackBar(
       '❌ Login rejected: ${data['rejectionReason'] ?? 'No reason provided'}',
       backgroundColor: Colors.red,
@@ -1984,6 +2215,100 @@ Future<void> _restoreLoginState(Attendance attendance) async {
       durationSeconds: 6,
     );
   }
+  Widget _buildGeoInfo() {
+  // If no GPS fix yet → fetch once + show loading text
+  if (_currentPosition == null) {
+    _fetchLocation(); // safe: triggers only once
+
+    return const Center(
+      child: Text(
+        "Fetching location...",
+        style: TextStyle(fontSize: 14),
+      ),
+    );
+  }
+
+  // User location
+  final userLocation = LatLng(
+    _currentPosition!.latitude,
+    _currentPosition!.longitude,
+  );
+
+  // Office location
+  final officeLocation = LatLng(officeLat, officeLng);
+
+  // Calculate distance
+  double distance = Geolocator.distanceBetween(
+    userLocation.latitude,
+    userLocation.longitude,
+    officeLocation.latitude,
+    officeLocation.longitude,
+  );
+
+  return SizedBox(
+    height: 300,
+    child: GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: userLocation,
+        zoom: 16,
+      ),
+
+      // 🔹 Markers
+      markers: {
+        Marker(
+          markerId: const MarkerId("user"),
+          position: userLocation,
+          infoWindow: InfoWindow(
+            title: "You",
+            snippet: "Distance: ${distance.toStringAsFixed(1)} m",
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueAzure,
+          ),
+        ),
+        Marker(
+          markerId: const MarkerId("office"),
+          position: officeLocation,
+          infoWindow: const InfoWindow(
+            title: "Office",
+            snippet: "Allowed login zone",
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueRed,
+          ),
+        ),
+      },
+
+      // 🔹 Line between user and office
+      polylines: {
+        Polyline(
+          polylineId: const PolylineId("distance_line"),
+          width: 4,
+          points: [userLocation, officeLocation],
+          color: distance <= allowedRadiusMeters
+              ? Colors.green
+              : Colors.red,
+        ),
+      },
+
+      // 🔹 Geofence Circle around office
+      circles: {
+        Circle(
+          circleId: const CircleId("office_radius"),
+          center: officeLocation,
+          radius: allowedRadiusMeters,    // <-- REQUIRED
+          fillColor: Colors.blue.withOpacity(0.2),
+          strokeColor: Colors.blue,
+          strokeWidth: 2,
+        ),
+      },
+
+      myLocationButtonEnabled: true,
+      myLocationEnabled: _locationEnabled,
+      zoomControlsEnabled: true,
+    ),
+  );
+}
   Widget _buildAttendanceCircle() {
     if (_isLoading) return _buildLoadingWidget();
     if (_state.isWaitingForApproval) return _buildApprovalWaitingWidget();
@@ -1995,8 +2320,9 @@ Future<void> _restoreLoginState(Attendance attendance) async {
 
     if (_state.isLoggedIn) {
       if (_state.isOnBreak) {
-        Duration currentBreakDuration = _state.breakStartTime != null ? 
-            DateTime.now().difference(_state.breakStartTime!) : Duration.zero;
+        Duration currentBreakDuration = _state.breakStartTime != null
+            ? DateTime.now().difference(_state.breakStartTime!)
+            : Duration.zero;
         displayText = 'BREAK\n${_formatDuration(currentBreakDuration)}';
         circleColor = Colors.orange;
         instructionText = 'Long press to end break';
@@ -2017,88 +2343,101 @@ Future<void> _restoreLoginState(Attendance attendance) async {
     }
 
     Widget circle = Container(
-      width: 160, 
+      width: 160,
       height: 160,
       decoration: BoxDecoration(
-        shape: BoxShape.circle, 
+        shape: BoxShape.circle,
         color: circleColor,
         boxShadow: [
           BoxShadow(
-            color: circleColor.withOpacity(0.3), 
-            spreadRadius: 8, 
-            blurRadius: 20, 
-            offset: const Offset(0, 5)
-          )
+            color: circleColor.withOpacity(0.3),
+            spreadRadius: 8,
+            blurRadius: 20,
+            offset: const Offset(0, 5),
+          ),
         ],
       ),
       child: Center(
         child: Text(
-          displayText, 
+          displayText,
           style: TextStyle(
-            color: textColor, 
-            fontSize: 18, 
-            fontWeight: FontWeight.bold, 
-            height: 1.2
-          ), 
-          textAlign: TextAlign.center
-        )
+            color: textColor,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            height: 1.2,
+          ),
+          textAlign: TextAlign.center,
+        ),
       ),
     );
 
-    return Column(children: [
-      GestureDetector(
-        onTap: () {
-          if (!_state.isLoggedIn) {
-            _login();
-          } else if (!_state.isOnBreak && _state.remainingShiftTime.inSeconds <= 0) {
-            _showLogoutConfirmationDialog();
-          }
-        },
-        onLongPress: () {
-          if (_state.isLoggedIn && !_state.isOnBreak && _state.remainingShiftTime.inSeconds > 0) {
-            _startBreak();
-          } else if (_state.isLoggedIn && _state.isOnBreak) {
-            _endBreak();
-          }
-        },
-        child: !_state.isLoggedIn ? AnimatedBuilder(
-          animation: _pulseAnimation,
-          builder: (context, child) => Transform.scale(scale: _pulseAnimation.value, child: circle),
-        ) : circle,
-      ),
-      const SizedBox(height: 16),
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: Text(
-          instructionText, 
-          key: ValueKey(instructionText), 
-          style: TextStyle(
-            color: circleColor, 
-            fontSize: 16, 
-            fontWeight: FontWeight.w600
-          ), 
-          textAlign: TextAlign.center
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: () {
+            if (!_state.isLoggedIn) {
+              _login();
+            } else if (!_state.isOnBreak &&
+                _state.remainingShiftTime.inSeconds <= 0) {
+              _showLogoutConfirmationDialog();
+            }
+          },
+          onLongPress: () {
+            if (_state.isLoggedIn &&
+                !_state.isOnBreak &&
+                _state.remainingShiftTime.inSeconds > 0) {
+              _startBreak();
+            } else if (_state.isLoggedIn && _state.isOnBreak) {
+              _endBreak();
+            }
+          },
+          child: !_state.isLoggedIn
+              ? AnimatedBuilder(
+                  animation: _pulseAnimation,
+                  builder: (context, child) => Transform.scale(
+                    scale: _pulseAnimation.value,
+                    child: circle,
+                  ),
+                )
+              : circle,
         ),
-      ),
-      // Debug info in development
-      if (kDebugMode && _state.isLoggedIn) ...[
-        const SizedBox(height: 8),
-        Text(
-          'Timer: $_timerTickCount ticks',
-          style: const TextStyle(fontSize: 10, color: Colors.grey),
+        const SizedBox(height: 16),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: Text(
+            instructionText,
+            key: ValueKey(instructionText),
+            style: TextStyle(
+              color: circleColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
         ),
+        // Debug info in development
+        if (kDebugMode && _state.isLoggedIn) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Timer: $_timerTickCount ticks',
+            style: const TextStyle(fontSize: 10, color: Colors.grey),
+          ),
+        ],
       ],
-    ]);
+    );
   }
+
   Future<void> _showLogoutConfirmationDialog() async {
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (BuildContext context) {
         String? logoutReason;
-        
+
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
           title: const Row(
             children: [
               Icon(Icons.logout, color: Colors.red),
@@ -2121,7 +2460,10 @@ Future<void> _restoreLoginState(Attendance attendance) async {
                 decoration: const InputDecoration(
                   hintText: 'e.g., Doctor appointment, Personal work...',
                   border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
                 onChanged: (value) {
                   logoutReason = value.isEmpty ? null : value;
@@ -2151,54 +2493,164 @@ Future<void> _restoreLoginState(Attendance attendance) async {
     );
   }
 
-  Future<void> _login() async {
-    if (_isDisposed) return;
+  // Future<void> _login() async {
+  //   if (_isDisposed) return;
 
-    _pulseController.stop();
-    await _getCurrentLocation();
+  //   _pulseController.stop();
+  //   await _getCurrentLocation();
 
-    final now = DateTime.now();
+  //   final now = DateTime.now();
 
-    final needsApproval = _needsLoginApproval();
+  //   final needsApproval = _needsLoginApproval();
 
-    if (needsApproval) {
-      final approvalId = await _requestLoginApproval();
-      if (approvalId != null) {
-        // Save approval state immediately
-        await _stateService.saveApprovalState(
-          isWaitingForApproval: true,
-          pendingApprovalId: approvalId,
-          approvalRequestTime: now,
-        );
-        
-        _updateState(_state.copyWith(
-          isWaitingForApproval: true,
-          loginTime: now,
-          pendingApprovalId: approvalId,
-          approvalRequestTime: now,
-          approvalRetryCount: 0,
-        ));
-        
-        _listenForApproval(approvalId);
-        
-        _safeShowSnackBar(
-          '⏳ Login after grace period. Waiting for admin/HR approval...',
-          backgroundColor: Colors.orange,
-          icon: Icons.access_time,
-          durationSeconds: 5,
-        );
-      } else {
-        _updateState(_state.copyWith(
-          isWaitingForApproval: false,
-          loginTime: null,
-        ));
-        await _stateService.clearApprovalState();
-      }
-    } else {
-      await _completeLogin();
-      await _stateService.clearApprovalState();
+  //   if (needsApproval) {
+  //     final approvalId = await _requestLoginApproval();
+  //     if (approvalId != null) {
+  //       // Save approval state immediately
+  //       await _stateService.saveApprovalState(
+  //         isWaitingForApproval: true,
+  //         pendingApprovalId: approvalId,
+  //         approvalRequestTime: now,
+  //       );
+
+  //       _updateState(
+  //         _state.copyWith(
+  //           isWaitingForApproval: true,
+  //           loginTime: now,
+  //           pendingApprovalId: approvalId,
+  //           approvalRequestTime: now,
+  //           approvalRetryCount: 0,
+  //         ),
+  //       );
+
+  //       _listenForApproval(approvalId);
+
+  //       _safeShowSnackBar(
+  //         '⏳ Login after grace period. Waiting for admin/HR approval...',
+  //         backgroundColor: Colors.orange,
+  //         icon: Icons.access_time,
+  //         durationSeconds: 5,
+  //       );
+  //     } else {
+  //       _updateState(
+  //         _state.copyWith(isWaitingForApproval: false, loginTime: null),
+  //       );
+  //       await _stateService.clearApprovalState();
+  //     }
+  //   } else {
+  //     await _completeLogin();
+  //     await _stateService.clearApprovalState();
+  //   }
+  // }
+  bool _isInsideOffice(double lat, double lng) {
+  double distance = Geolocator.distanceBetween(
+    lat, 
+    lng, 
+    officeLat, 
+    officeLng,
+  );
+
+  return distance <= allowedRadiusMeters;
+}
+Future<void> _login() async {
+  if (_isDisposed) return;
+  if (mounted && !_isDisposed){
+  _pulseController.stop();
+  }
+  await _getCurrentLocation();
+
+  // ---------- BASIC VALIDATIONS ----------
+  if (_currentPosition == null) {
+    _safeShowSnackBar(
+      'Unable to detect location. Please enable GPS.',
+      backgroundColor: Colors.red,
+      icon: Icons.location_off,
+    );
+    return;
+  }
+
+  if (_state.workLocation == null || _state.workLocation!.isEmpty) {
+    _safeShowSnackBar(
+      'Work location is not set. Contact Administrator.',
+      backgroundColor: Colors.red,
+      icon: Icons.error_outline,
+    );
+    return;
+  }
+
+  final workLoc = _state.workLocation!.toLowerCase().trim();
+
+  // ---------- WORK LOCATION LOGIC ----------
+  if (workLoc == 'office') {
+    // Employee MUST be inside office geofence
+    bool inside = _isInsideOffice(
+      _currentPosition!.latitude,
+      _currentPosition!.longitude,
+    );
+
+    if (!inside) {
+      _safeShowSnackBar(
+        '❌ You must be at the office to login.\n'
+        'Login blocked due to location restriction.',
+        backgroundColor: Colors.red,
+        icon: Icons.my_location,
+        durationSeconds: 5,
+      );
+      return;
     }
   }
+  else if (workLoc == 'site') {
+    // SITE employees can login anywhere → NO location restriction
+    // Only save their current login location (already handled later)
+    print("📍 SITE employee → skipping geofence check");
+  }
+  else {
+    // Unknown location type
+    _safeShowSnackBar(
+      'Invalid work location "${_state.workLocation}". Contact Administrator.',
+      backgroundColor: Colors.red,
+      icon: Icons.warning_amber,
+    );
+    return;
+  }
+
+  // ---------- NORMAL LOGIN PROCESS ----------
+  final now = DateTime.now();
+  final needsApproval = _needsLoginApproval();
+
+  if (needsApproval) {
+    final approvalId = await _requestLoginApproval();
+    if (approvalId != null) {
+      await _stateService.saveApprovalState(
+        isWaitingForApproval: true,
+        pendingApprovalId: approvalId,
+        approvalRequestTime: now,
+      );
+
+      _updateState(_state.copyWith(
+        isWaitingForApproval: true,
+        loginTime: now,
+        pendingApprovalId: approvalId,
+        approvalRequestTime: now,
+        approvalRetryCount: 0,
+      ));
+
+      _listenForApproval(approvalId);
+
+      _safeShowSnackBar(
+        '⏳ Waiting for approval...',
+        backgroundColor: Colors.orange,
+        icon: Icons.access_time,
+      );
+    } else {
+      _updateState(_state.copyWith(isWaitingForApproval: false, loginTime: null));
+      await _stateService.clearApprovalState();
+    }
+  } else {
+    await _completeLogin();
+    await _stateService.clearApprovalState();
+  }
+}
   Future<String?> _requestLoginApproval() async {
     if (_isDisposed) return null;
 
@@ -2230,7 +2682,7 @@ Future<void> _restoreLoginState(Attendance attendance) async {
       return null;
     }
   }
-  
+
   Future<void> _notifyAdminAndHR(String approvalId) async {
     try {
       QuerySnapshot adminUsers = await FirebaseFirestore.instance
@@ -2262,291 +2714,338 @@ Future<void> _restoreLoginState(Attendance attendance) async {
   }
 
   bool _needsLoginApproval() {
-  if (_state.userId.isEmpty || _state.empId.isEmpty) {
-    // If user is not logged in, no approval needed for login
-    return false;
-  }
-
-  DateTime now = DateTime.now();
-  String employeeShift = _state.shift;
-
-  // Parse shift string to get start time
-  try {
-    // Handle different shift formats
-    DateTime shiftStartTime = _parseShiftStartTime(employeeShift);
-    DateTime graceEndTime = shiftStartTime.add(const Duration(minutes: 15));
-
-    // Check if current time is within grace period
-    return now.isAfter(graceEndTime);
-  } catch (e) {
-    _logError('Error parsing shift time', e, null);
-    // Default fallback: if shift can't be parsed, use standard 9:30 AM
-    DateTime graceTime = DateTime(now.year, now.month, now.day, 9, 45);
-    return now.isAfter(graceTime);
-  }
-}
-
-DateTime _parseShiftStartTime(String shiftString) {
-  DateTime now = DateTime.now();
-  
-  // Handle various shift formats
-  if (shiftString.toLowerCase().contains('9:30am') || 
-      shiftString.toLowerCase().contains('9:30 am') ||
-      shiftString == '9:30AM to 6:30 PM') {
-    return DateTime(now.year, now.month, now.day, 9, 30);
-  } else if (shiftString.toLowerCase().contains('9:50am') || 
-             shiftString.toLowerCase().contains('9:50 am') ||
-             shiftString == '9:50AM to 6:50 PM') {
-    return DateTime(now.year, now.month, now.day, 9, 50);
-  } 
-  // Add more shift patterns as needed
-  else if (shiftString.toLowerCase().contains('10:00am') || 
-           shiftString.toLowerCase().contains('10:00 am')) {
-    return DateTime(now.year, now.month, now.day, 10, 0);
-  } else if (shiftString.toLowerCase().contains('10:30am') || 
-             shiftString.toLowerCase().contains('10:30 am')) {
-    return DateTime(now.year, now.month, now.day, 10, 30);
-  }
-  
-  // Default fallback - try to extract time from string
-  try {
-    // Try to extract time like "9:30AM" or "09:30 AM"
-    final timeRegex = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)', caseSensitive: false);
-    final match = timeRegex.firstMatch(shiftString);
-    
-    if (match != null) {
-      int hour = int.parse(match.group(1)!);
-      int minute = int.parse(match.group(2)!);
-      String period = match.group(3)!.toUpperCase();
-      
-      // Convert to 24-hour format
-      if (period == 'PM' && hour < 12) {
-        hour += 12;
-      } else if (period == 'AM' && hour == 12) {
-        hour = 0;
-      }
-      
-      return DateTime(now.year, now.month, now.day, hour, minute);
+    if (_state.userId.isEmpty || _state.empId.isEmpty) {
+      // If user is not logged in, no approval needed for login
+      return false;
     }
-  } catch (e) {
-    _logError('Error parsing shift from string: $shiftString', e, null);
+
+    DateTime now = DateTime.now();
+    String employeeShift = _state.shift;
+
+    // Parse shift string to get start time
+    try {
+      // Handle different shift formats
+      DateTime shiftStartTime = _parseShiftStartTime(employeeShift);
+      DateTime graceEndTime = shiftStartTime.add(const Duration(minutes: 15));
+
+      // Check if current time is within grace period
+      return now.isAfter(graceEndTime);
+    } catch (e) {
+      _logError('Error parsing shift time', e, null);
+      // Default fallback: if shift can't be parsed, use standard 9:30 AM
+      DateTime graceTime = DateTime(now.year, now.month, now.day, 9, 45);
+      return now.isAfter(graceTime);
+    }
   }
-  
-  // If all parsing fails, return default 9:30 AM
-  return DateTime(now.year, now.month, now.day, 9, 30);
-}
+
+  DateTime _parseShiftStartTime(String shiftString) {
+    DateTime now = DateTime.now();
+
+    // Handle various shift formats
+    if (shiftString.toLowerCase().contains('9:30am') ||
+        shiftString.toLowerCase().contains('9:30 am') ||
+        shiftString == '9:30AM to 6:30 PM') {
+      return DateTime(now.year, now.month, now.day, 9, 30);
+    } else if (shiftString.toLowerCase().contains('9:50am') ||
+        shiftString.toLowerCase().contains('9:50 am') ||
+        shiftString == '9:50AM to 6:50 PM') {
+      return DateTime(now.year, now.month, now.day, 9, 50);
+    }
+    // Add more shift patterns as needed
+    else if (shiftString.toLowerCase().contains('10:00am') ||
+        shiftString.toLowerCase().contains('10:00 am')) {
+      return DateTime(now.year, now.month, now.day, 10, 0);
+    } else if (shiftString.toLowerCase().contains('10:30am') ||
+        shiftString.toLowerCase().contains('10:30 am')) {
+      return DateTime(now.year, now.month, now.day, 10, 30);
+    }
+
+    // Default fallback - try to extract time from string
+    try {
+      // Try to extract time like "9:30AM" or "09:30 AM"
+      final timeRegex = RegExp(
+        r'(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)',
+        caseSensitive: false,
+      );
+      final match = timeRegex.firstMatch(shiftString);
+
+      if (match != null) {
+        int hour = int.parse(match.group(1)!);
+        int minute = int.parse(match.group(2)!);
+        String period = match.group(3)!.toUpperCase();
+
+        // Convert to 24-hour format
+        if (period == 'PM' && hour < 12) {
+          hour += 12;
+        } else if (period == 'AM' && hour == 12) {
+          hour = 0;
+        }
+
+        return DateTime(now.year, now.month, now.day, hour, minute);
+      }
+    } catch (e) {
+      _logError('Error parsing shift from string: $shiftString', e, null);
+    }
+
+    // If all parsing fails, return default 9:30 AM
+    return DateTime(now.year, now.month, now.day, 9, 30);
+  }
+
   Widget _buildUserInfo() {
     if (_isLoading) return _buildLoadingUserInfo();
     if (_hasError) return _buildErrorUserInfo();
 
     return Card(
-      elevation: 4, 
+      elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0), 
-        child: Column(children: [
-          Row(children: [
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.blue[100],
+                  radius: 25,
+                  child: Icon(Icons.person, color: Colors.blue, size: 30),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _state.userName,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        _state.isLoggedIn
+                            ? "Currently Working"
+                            : "Not Logged In",
+                        style: TextStyle(
+                          color: _state.isLoggedIn ? Colors.green : Colors.grey,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        'Employee ID: ${_state.empId}',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                      Text(
+                        DateFormat('dd MMM yyyy - EEEE').format(DateTime.now()),
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _state.isLoggedIn
+                        ? Colors.green[100]
+                        : Colors.grey[200],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _state.isLoggedIn ? "ACTIVE" : "OFFLINE",
+                    style: TextStyle(
+                      color: _state.isLoggedIn
+                          ? Colors.green[700]
+                          : Colors.grey[600],
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_state.isLoggedIn) ...[
+              const Divider(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildInfoItem(
+                    Icons.access_time,
+                    'Work Time',
+                    _formatDuration(_state.workDuration),
+                  ),
+                  _buildInfoItem(
+                    Icons.coffee,
+                    'Break Time',
+                    _formatDuration(_state.totalBreakDurationToday),
+                  ),
+                  _buildInfoItem(
+                    Icons.route,
+                    'Distance',
+                    '${_state.totalDistanceTraveled.toStringAsFixed(1)} km',
+                  ),
+                ],
+              ),
+              // Shift info
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Shift ends:',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                    Text(
+                      _formatDuration(_state.remainingShiftTime),
+                      style: TextStyle(
+                        color: _state.remainingShiftTime.inHours < 1
+                            ? Colors.orange
+                            : Colors.green,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorUserInfo() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.red[100],
+                  radius: 25,
+                  child: Icon(Icons.error_outline, color: Colors.red, size: 30),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Error Loading User",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                      Text(
+                        _errorMessage ?? 'Unknown error occurred',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _initializeUserData,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry Loading'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingUserInfo() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          children: [
             CircleAvatar(
-              backgroundColor: Colors.blue[100], 
-              radius: 25, 
-              child: Icon(Icons.person, color: Colors.blue, size: 30)
+              backgroundColor: Colors.grey[300],
+              radius: 25,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, 
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_state.userName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  Text(
-                    _state.isLoggedIn ? "Currently Working" : "Not Logged In", 
-                    style: TextStyle(
-                      color: _state.isLoggedIn ? Colors.green : Colors.grey, 
-                      fontSize: 14
-                    )
-                  ),
-                  Text(
-                    'Employee ID: ${_state.empId}', 
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12)
-                  ),
-                  Text(
-                    DateFormat('dd MMM yyyy - EEEE').format(DateTime.now()), 
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12)
-                  ),
-                ]
-              )
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _state.isLoggedIn ? Colors.green[100] : Colors.grey[200], 
-                borderRadius: BorderRadius.circular(20)
-              ),
-              child: Text(
-                _state.isLoggedIn ? "ACTIVE" : "OFFLINE", 
-                style: TextStyle(
-                  color: _state.isLoggedIn ? Colors.green[700] : Colors.grey[600], 
-                  fontWeight: FontWeight.bold, 
-                  fontSize: 12
-                )
-              ),
-            ),
-          ]),
-          if (_state.isLoggedIn) ...[
-            const Divider(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround, 
-              children: [
-                _buildInfoItem(Icons.access_time, 'Work Time', _formatDuration(_state.workDuration)),
-                _buildInfoItem(Icons.coffee, 'Break Time', _formatDuration(_state.totalBreakDurationToday)),
-                _buildInfoItem(Icons.route, 'Distance', '${_state.totalDistanceTraveled.toStringAsFixed(1)} km'),
-              ]
-            ),
-            // Shift info
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Shift ends:',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
+                  Container(
+                    width: 150,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
-                  Text(
-                    _formatDuration(_state.remainingShiftTime),
-                    style: TextStyle(
-                      color: _state.remainingShiftTime.inHours < 1 ? Colors.orange : Colors.green,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 100,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    width: 120,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
                 ],
               ),
             ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                "LOADING",
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
           ],
-        ])
+        ),
       ),
     );
   }
-  Widget _buildErrorUserInfo() {
-    return Card(
-      elevation: 4, 
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0), 
-        child: Column(children: [
-          Row(children: [
-            CircleAvatar(
-              backgroundColor: Colors.red[100], 
-              radius: 25, 
-              child: Icon(Icons.error_outline, color: Colors.red, size: 30)
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, 
-                children: [
-                  const Text(
-                    "Error Loading User", 
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)
-                  ),
-                  Text(
-                    _errorMessage ?? 'Unknown error occurred', 
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12)
-                  ),
-                ]
-              )
-            ),
-          ]),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: _initializeUserData, 
-            icon: const Icon(Icons.refresh), 
-            label: const Text('Retry Loading'), 
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue, 
-              foregroundColor: Colors.white
-            )
-          ),
-        ])
-      ),
-    );
-  }
-  Widget _buildLoadingUserInfo() {
-    return Card(
-      elevation: 4, 
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0), 
-        child: Row(children: [
-          CircleAvatar(
-            backgroundColor: Colors.grey[300], 
-            radius: 25, 
-            child: CircularProgressIndicator(
-              strokeWidth: 3, 
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue)
-            )
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, 
-              children: [
-                Container(
-                  width: 150, 
-                  height: 20, 
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300], 
-                    borderRadius: BorderRadius.circular(4)
-                  )
-                ),
-                const SizedBox(height: 8), 
-                Container(
-                  width: 100, 
-                  height: 16, 
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200], 
-                    borderRadius: BorderRadius.circular(4)
-                  )
-                ),
-                const SizedBox(height: 4), 
-                Container(
-                  width: 120, 
-                  height: 14, 
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200], 
-                    borderRadius: BorderRadius.circular(4)
-                  )
-                ),
-              ]
-            )
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
-            decoration: BoxDecoration(
-              color: Colors.grey[200], 
-              borderRadius: BorderRadius.circular(20)
-            ),
-            child: const Text(
-              "LOADING", 
-              style: TextStyle(
-                color: Colors.grey, 
-                fontWeight: FontWeight.bold, 
-                fontSize: 12
-              )
-            ),
-          ),
-        ])
-      ),
-    );
-  }
+
   // MANUAL REFRESH BUTTON
   Widget _buildRefreshButton() {
     return Padding(
@@ -2572,7 +3071,10 @@ DateTime _parseShiftStartTime(String shiftString) {
               _updateWorkDuration();
             }
           },
-          label: const Text('REFRESH DATA', style: TextStyle(fontWeight: FontWeight.bold)),
+          label: const Text(
+            'REFRESH DATA',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
         ),
       ),
     );
@@ -2582,11 +3084,14 @@ DateTime _parseShiftStartTime(String shiftString) {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Attendance Dashboard', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Attendance Dashboard',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
         elevation: 4,
         actions: [
-          if (_state.isLoggedIn && !_isLoading) 
+          if (_state.isLoggedIn && !_isLoading)
             IconButton(
               icon: const Icon(Icons.notifications),
               onPressed: _updateNotification,
@@ -2613,116 +3118,141 @@ DateTime _parseShiftStartTime(String shiftString) {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
-          child: Column(children: [
-            if (_hasError) _buildErrorWidget(),
-            if (!_hasError) ...[
-              _buildInstructionsCard(),
-              const SizedBox(height: 16),
-              _buildLocationBanner(),
-              const SizedBox(height: 24),
-              _buildAttendanceCircle(),
-              const SizedBox(height: 24),
-              _buildRefreshButton(), // Add refresh button
-              const SizedBox(height: 8),
-              _buildLogoutButton(),
-              const SizedBox(height: 24),
-              _buildUserInfo(),
-              const SizedBox(height: 24),
+          child: Column(
+            children: [
+              if (_hasError) _buildErrorWidget(),
+              if (!_hasError) ...[
+                _buildInstructionsCard(),
+                const SizedBox(height: 16),
+                _buildLocationBanner(),
+                const SizedBox(height: 24),
+                _buildAttendanceCircle(),
+                const SizedBox(height: 24),
+                _buildRefreshButton(), // Add refresh button
+                const SizedBox(height: 24),
+                _buildGeoInfo(),
+                const SizedBox(height: 8),
+                _buildLogoutButton(),
+                const SizedBox(height: 24),
+                _buildUserInfo(),
+                const SizedBox(height: 24),
+              ],
             ],
-          ]),
+          ),
         ),
       ),
     );
   }
+
   Widget _buildLogoutButton() {
-    if (!_state.isLoggedIn || _state.isOnBreak || _state.remainingShiftTime.inSeconds <= 0 || _isLoading) {
+    if (!_state.isLoggedIn ||
+        _state.isOnBreak ||
+        _state.remainingShiftTime.inSeconds <= 0 ||
+        _isLoading) {
       return const SizedBox.shrink();
     }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: SizedBox(
-        width: double.infinity, 
+        width: double.infinity,
         child: ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red, 
-            foregroundColor: Colors.white, 
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
-          icon: const Icon(Icons.logout), 
+          icon: const Icon(Icons.logout),
           onPressed: _showLogoutConfirmationDialog,
           label: const Text(
-            'EARLY LOGOUT', 
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+            'EARLY LOGOUT',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-        )
+        ),
       ),
     );
   }
-   Widget _buildLocationBanner() {
+
+  Widget _buildLocationBanner() {
     if (_locationEnabled || _isLoading) return const SizedBox.shrink();
 
     return Container(
-      width: double.infinity, 
-      padding: const EdgeInsets.all(12.0), 
+      width: double.infinity,
+      padding: const EdgeInsets.all(12.0),
       margin: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.orange[100]!, Colors.orange[50]!]), 
-        borderRadius: BorderRadius.circular(12.0), 
+        gradient: LinearGradient(
+          colors: [Colors.orange[100]!, Colors.orange[50]!],
+        ),
+        borderRadius: BorderRadius.circular(12.0),
         border: Border.all(color: Colors.orange),
       ),
-      child: Row(children: [
-        Icon(Icons.location_off, color: Colors.orange), 
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            'Enable location for accurate attendance tracking', 
-            style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.w500)
-          )
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange, 
-            foregroundColor: Colors.white, 
-            minimumSize: const Size(60, 30)
+      child: Row(
+        children: [
+          Icon(Icons.location_off, color: Colors.orange),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Enable location for accurate attendance tracking',
+              style: TextStyle(
+                color: Colors.orange[700],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
-          onPressed: _checkLocationPermission, 
-          child: const Text('Enable', style: TextStyle(fontSize: 12)),
-        ),
-      ]),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(60, 30),
+            ),
+            onPressed: _checkLocationPermission,
+            child: const Text('Enable', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
     );
   }
+
   Widget _buildErrorWidget() {
     return Card(
-      elevation: 4, 
+      elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0), 
-        child: Column(children: [
-          const Icon(Icons.error_outline, size: 64, color: Colors.red), 
-          const SizedBox(height: 16),
-          const Text(
-            'Something went wrong', 
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)
-          ),
-          const SizedBox(height: 8), 
-          Text(
-            _errorMessage ?? 'Unknown error occurred', 
-            style:  TextStyle(color: Colors.grey[600]), 
-            textAlign: TextAlign.center
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _initializeApp, 
-            icon: const Icon(Icons.refresh), 
-            label: const Text('Retry'), 
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue, 
-              foregroundColor: Colors.white
-            )
-          ),
-        ])
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            const Text(
+              'Something went wrong',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage ?? 'Unknown error occurred',
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _initializeApp,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2752,16 +3282,20 @@ DateTime _parseShiftStartTime(String shiftString) {
     DateTime now = DateTime.now();
     return DateTime(now.year, now.month, now.day, 18, 30);
   }
-  void _safeShowSnackBar(String message, {
-    Color? backgroundColor, 
-    IconData? icon, 
-    int durationSeconds = 3
+
+  void _safeShowSnackBar(
+    String message, {
+    Color? backgroundColor,
+    IconData? icon,
+    int durationSeconds = 3,
   }) {
     if (!(mounted && !_isDisposed)) return;
 
     final now = DateTime.now();
     // Suppress duplicate messages within a short debounce window
-    if (_lastSnackMessage == message && _lastSnackTime != null && now.difference(_lastSnackTime!) < _snackDebounce) {
+    if (_lastSnackMessage == message &&
+        _lastSnackTime != null &&
+        now.difference(_lastSnackTime!) < _snackDebounce) {
       if (kDebugMode) print('⚠️ Snack suppressed (duplicate): $message');
       return;
     }
@@ -2770,16 +3304,22 @@ DateTime _parseShiftStartTime(String shiftString) {
     _lastSnackTime = now;
 
     final snackBar = SnackBar(
-      content: Row(children: [
-        if (icon != null) ...[Icon(icon, color: Colors.white), const SizedBox(width: 8)],
-        Expanded(child: Text(message)),
-      ]),
+      content: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, color: Colors.white),
+            const SizedBox(width: 8),
+          ],
+          Expanded(child: Text(message)),
+        ],
+      ),
       backgroundColor: backgroundColor ?? Colors.blue,
       duration: Duration(seconds: durationSeconds),
       behavior: SnackBarBehavior.floating,
     );
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
   }
+
   Widget _buildInstructionsCard() {
     if (!_state.showInstructions || _isLoading) return const SizedBox.shrink();
 
@@ -2789,113 +3329,149 @@ DateTime _parseShiftStartTime(String shiftString) {
         duration: const Duration(milliseconds: 500),
         opacity: _state.showInstructions ? 1.0 : 0.0,
         child: Card(
-          elevation: 8, 
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)), 
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
           color: Colors.blue[50],
           child: Padding(
-            padding: const EdgeInsets.all(16.0), 
+            padding: const EdgeInsets.all(16.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, 
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  Icon(Icons.info_outline, color: Colors.blue, size: 28),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'How to Use Attendance System', 
-                      style: TextStyle(
-                        fontSize: 18, 
-                        fontWeight: FontWeight.bold, 
-                        color: Colors.blue[800]
-                      )
-                    )
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.grey), 
-                    onPressed: () => _updateState(_state.copyWith(showInstructions: false))
-                  ),
-                ]),
-                const Divider(), 
-                const SizedBox(height: 8),
-                _buildInstructionItem(Icons.login, 'LOGIN (9:30 AM)', 'Tap to start. 15 min grace period. After 9:45 AM requires approval', Colors.green),
-                const SizedBox(height: 12),
-                _buildInstructionItem(Icons.coffee, 'BREAK', 'Long press during work to take a break', Colors.orange),
-                const SizedBox(height: 12),
-                _buildInstructionItem(Icons.work, 'RESUME', 'Long press again to end your break', Colors.blue),
-                const SizedBox(height: 12),
-                _buildInstructionItem(Icons.logout, 'LOGOUT (6:30 PM)', 'Tap when shift ends or provide early logout reason', Colors.red),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12), 
-                  decoration: BoxDecoration(
-                    color: Colors.amber[100], 
-                    borderRadius: BorderRadius.circular(8)
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.gps_fixed, color: Colors.amber[700]), 
+                Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue, size: 28),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '📍 Location tracked every 10 sec. Distance calculated automatically', 
+                        'How to Use Attendance System',
                         style: TextStyle(
-                          color: Colors.amber[700], 
-                          fontWeight: FontWeight.w500, 
-                          fontSize: 12
-                        )
-                      )
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue[800],
+                        ),
+                      ),
                     ),
-                  ]),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.grey),
+                      onPressed: () => _updateState(
+                        _state.copyWith(showInstructions: false),
+                      ),
+                    ),
+                  ],
                 ),
-              ]
-            )
+                const Divider(),
+                const SizedBox(height: 8),
+                _buildInstructionItem(
+                  Icons.login,
+                  'LOGIN/LOGOUT: ${_state.shift}',
+                  'Tap to start. 15 min grace period. After 9:45 AM requires approval',
+                  Colors.green,
+                ),
+                const SizedBox(height: 12),
+                _buildInstructionItem(
+                  Icons.coffee,
+                  'BREAK',
+                  'Long press during work to take a break',
+                  Colors.orange,
+                ),
+                const SizedBox(height: 12),
+                _buildInstructionItem(
+                  Icons.work,
+                  'RESUME',
+                  'Long press again to end your break',
+                  Colors.blue,
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.gps_fixed, color: Colors.amber[700]),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '📍 Location tracked every 10 sec. Distance calculated automatically',
+                          style: TextStyle(
+                            color: Colors.amber[700],
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-  Widget _buildInstructionItem(IconData icon, String title, String description, Color color) {
-    return Row(children: [
-      Container(
-        padding: const EdgeInsets.all(8), 
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1), 
-          borderRadius: BorderRadius.circular(8)
-        ), 
-        child: Icon(icon, color: color, size: 20)
-      ),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start, 
-          children: [
-            Text(
-              title, 
-              style: TextStyle(
-                fontWeight: FontWeight.bold, 
-                color: color, 
-                fontSize: 12
-              )
-            ),
-            Text(
-              description, 
-              style: TextStyle(
-                color: Colors.grey[700], 
-                fontSize: 11
-              )
-            ),
-          ]
-        )
-      ),
-    ]);
+
+  Widget _buildInstructionItem(
+    IconData icon,
+    String title,
+    String description,
+    Color color,
+  ) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                description,
+                style: TextStyle(color: Colors.grey[700], fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
+
   Widget _buildInfoItem(IconData icon, String title, String value) {
-    return Column(children: [
-      Icon(icon, color: Colors.blue, size: 20), 
-      const SizedBox(height: 4),
-      Text(title, style: TextStyle(fontSize: 12, color: Colors.grey[600])), 
-      const SizedBox(height: 2),
-      Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[800])),
-    ]);
+    return Column(
+      children: [
+        Icon(icon, color: Colors.blue, size: 20),
+        const SizedBox(height: 4),
+        Text(title, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue[800],
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -2904,7 +3480,7 @@ class ApprovalCheckResult {
   final String status;
   final String reason;
   final Map<String, dynamic>? data;
-  
+
   const ApprovalCheckResult({
     required this.status,
     required this.reason,

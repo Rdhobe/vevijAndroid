@@ -4,7 +4,8 @@ class PersistenceKeys {
   static const String userName = 'userName';
   static const String empId = 'empId';
   static const String userId = 'userId';
-
+  static const String shift = 'shift';
+  static const String workLocation = 'workLocation';
   // Approval state
   static const String isWaitingForApproval = 'isWaitingForApproval';
   static const String pendingApprovalId = 'pendingApprovalId';

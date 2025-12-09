@@ -8,6 +8,7 @@ class Employee {
   final String birthDate;
   final String branch;
   final String shift;
+  final String workLocation;
   final DateTime createdAt;
   final String department;
   final String designation;
@@ -36,6 +37,7 @@ class Employee {
     required this.birthDate,
     required this.branch,
     required this.shift,
+    required this.workLocation,
     required this.createdAt,
     required this.department,
     required this.designation,
@@ -65,6 +67,7 @@ class Employee {
       birthDate: map['birthDate'] ?? '',
       branch: map['branch'] ?? '',
       shift: map['shift'] ?? '',
+      workLocation: map['workLocation'] ?? '',
       createdAt: map['createdAt'] is Timestamp
         ? (map['createdAt'] as Timestamp).toDate()
         : (map['createdAt'] is String
@@ -99,6 +102,7 @@ class Employee {
       'birthDate': birthDate,
       'branch': branch,
       'shift': shift,
+      'workLocation': workLocation,
       'createdAt': Timestamp.fromDate(createdAt),
       'department': department,
       'designation': designation,
@@ -129,6 +133,7 @@ class Employee {
     String? birthDate,
     String? branch,
     String? shift,
+    String? workLocation,
     DateTime? createdAt,
     String? department,
     String? designation,
@@ -157,6 +162,7 @@ class Employee {
       birthDate: birthDate ?? this.birthDate,
       branch: branch ?? this.branch,
       shift: shift ?? this.shift,
+      workLocation: workLocation ?? this.workLocation,
       createdAt: createdAt ?? this.createdAt,
       department: department ?? this.department,
       designation: designation ?? this.designation,
@@ -194,6 +200,7 @@ class Employee {
         birthDate: '',
         branch: '',
         shift: '',
+        workLocation: '',
         createdAt: DateTime.now(),
         department: '',
         designation: '',
@@ -226,6 +233,7 @@ class Employee {
       birthDate: '',
       branch: '',
       shift: '',
+      workLocation: '',
       createdAt: DateTime.now(),
       department: '',
       designation: '',
@@ -257,6 +265,7 @@ class Employee {
         birthDate: '',
         branch: '',
         shift: '',
+        workLocation: '',
         createdAt: DateTime.now(),
         department: '',
         designation: '',

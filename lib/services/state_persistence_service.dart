@@ -13,6 +13,9 @@ class StatePersistenceService {
   static const String _userNameKey = PersistenceKeys.userName;
   static const String _empIdKey = PersistenceKeys.empId;
   static const String _userIdKey = PersistenceKeys.userId;
+  // New: explicit shift key so load/save always use same key
+  static const String _shiftKey = PersistenceKeys.shift;
+  static const String _workLocationKey = PersistenceKeys.workLocation;
   static const String _isWaitingForApprovalKey = PersistenceKeys.isWaitingForApproval;
   static const String _pendingApprovalIdKey = PersistenceKeys.pendingApprovalId;
   static const String _approvalRequestTimeKey = PersistenceKeys.approvalRequestTime;
@@ -63,14 +66,14 @@ class StatePersistenceService {
     }
   }
 
-  Future<void> saveUserData(String userName, String empId, String userId ,String shift) async {
+  Future<void> saveUserData(String userName, String empId, String userId, String shift, String workLocation) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userNameKey, userName);
       await prefs.setString(_empIdKey, empId);
       await prefs.setString(_userIdKey, userId);
-      await prefs.setString('shift', shift);
-      
+      await prefs.setString(_shiftKey, shift);
+      await prefs.setString(_workLocationKey, '');
       if (!kReleaseMode) {
         print('✅ User data saved to cache');
       }
@@ -80,21 +83,26 @@ class StatePersistenceService {
     }
   }
 
+  /// Returns a consistent map with non-null String values.
+  /// Keys: 'userName', 'empId', 'userId', 'shift'
   Future<Map<String, String>> loadUserData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userName = prefs.getString(_userNameKey) ?? '';
       final empId = prefs.getString(_empIdKey) ?? '';
       final userId = prefs.getString(_userIdKey) ?? '';
-      
+      final shift = prefs.getString(_shiftKey) ?? '';
+      final workLocation = prefs.getString(_workLocationKey) ?? '';
       return {
         'userName': userName,
         'empId': empId,
         'userId': userId,
+        'shift': shift,
+        'workLocation': workLocation
       };
     } catch (e) {
       print('❌ Error loading user data: $e');
-      return {'userName': '', 'empId': '', 'userId': ''};
+      return {'userName': '', 'empId': '', 'userId': '', 'shift': '' , 'workLocation': ''};
     }
   }
 
