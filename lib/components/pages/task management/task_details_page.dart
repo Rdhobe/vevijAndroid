@@ -18,7 +18,7 @@ class TaskDetailsPage extends StatefulWidget {
   final TeamRole userRole;
 
   const TaskDetailsPage({
-    super.key, 
+    super.key,
     required this.task,
     required this.userRole,
   });
@@ -36,13 +36,12 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   // FIXED: Don't use Provider in property getters that are called during build
   bool _canEditTask(BuildContext context) {
     return widget.userRole == TeamRole.manager ||
-           widget.userRole == TeamRole.admin ||
-           widget.userRole == TeamRole.hr;
+        widget.userRole == TeamRole.admin ||
+        widget.userRole == TeamRole.hr;
   }
 
   bool _canDeleteTask() {
-    return widget.userRole == TeamRole.admin ||
-           widget.userRole == TeamRole.hr;
+    return widget.userRole == TeamRole.admin || widget.userRole == TeamRole.hr;
   }
 
   bool _canUpdateStatus(BuildContext context) {
@@ -53,6 +52,16 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       return _task.assignedTo.contains(currentUserId);
     }
     return widget.userRole != TeamRole.monitor;
+  }
+
+  Future<String> _fetchUserName(userId) async {
+    try {
+      // You'll need to implement this based on your UserService
+      final Employee? user = await UserService().getUserById(userId);
+      return user?.empName ?? 'User ${userId.substring(0, 8)}...';
+    } catch (e) {
+      return 'Unknown User';
+    }
   }
 
   @override
@@ -88,10 +97,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                 _handleAction(value, taskService, context);
               },
               itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Text('Edit Task'),
-                ),
+                const PopupMenuItem(value: 'edit', child: Text('Edit Task')),
                 if (_canDeleteTask())
                   const PopupMenuItem(
                     value: 'delete',
@@ -109,23 +115,23 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             // Basic Info Card
             _buildBasicInfoCard(taskService, authService),
             const SizedBox(height: 16),
-            
+
             // Description Card
             _buildDescriptionCard(),
             const SizedBox(height: 16),
-            
+
             // Assignees Card
             _buildAssigneesCard(),
             const SizedBox(height: 16),
-            
+
             // Status Update Section (if user can update status)
             if (_canUpdateStatus(context))
               _buildStatusUpdateSection(taskService, authService),
-            
+
             // Attachments Card
             _buildAttachmentsCard(authService),
             const SizedBox(height: 16),
-            
+
             // Task History
             _buildTaskHistorySection(),
           ],
@@ -137,7 +143,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   Widget _buildBasicInfoCard(TaskService taskService, AuthService authService) {
     final isOverdue = Helpers.isOverdue(_task);
     final daysRemaining = Helpers.daysRemaining(_task);
-    
+
     return Card(
       elevation: 2,
       child: Padding(
@@ -161,7 +167,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               ],
             ),
             const SizedBox(height: 16),
-            
+
             // Priority
             Row(
               children: [
@@ -182,32 +188,42 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               ],
             ),
             const SizedBox(height: 12),
-            
+
             // Due Date Section
-            _buildDueDateSection(taskService, authService, isOverdue, daysRemaining),
+            _buildDueDateSection(
+              taskService,
+              authService,
+              isOverdue,
+              daysRemaining,
+            ),
             const SizedBox(height: 12),
-            
+
             // Team Info
             _InfoRow(
               icon: Icons.group_work,
               label: 'Team',
               value: _task.assignedTeamId,
             ),
-            
-            // Created By
-            _InfoRow(
-              icon: Icons.person,
-              label: 'Created By',
-              value: _task.createdBy,
+
+            FutureBuilder<String>(
+              future: _fetchUserName(_task.createdBy),
+              builder: (context, snapshot) {
+                return _InfoRow(
+                  icon: Icons.person,
+                  label: 'Created By',
+                  value: snapshot.connectionState == ConnectionState.done
+                      ? (snapshot.data ?? 'Unknown User')
+                      : 'Loading...',
+                );
+              },
             ),
-            
             // Created Date
             _InfoRow(
               icon: Icons.calendar_today,
               label: 'Created',
               value: Helpers.formatDateTime(_task.createdAt),
             ),
-            
+
             // Last Updated
             _InfoRow(
               icon: Icons.update,
@@ -220,7 +236,12 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  Widget _buildDueDateSection(TaskService taskService, AuthService authService, bool isOverdue, int daysRemaining) {
+  Widget _buildDueDateSection(
+    TaskService taskService,
+    AuthService authService,
+    bool isOverdue,
+    int daysRemaining,
+  ) {
     final canEditDueDate = _canEditTask(context);
 
     return Row(
@@ -282,7 +303,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                     ),
                     if (isOverdue)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.red.shade100,
                           borderRadius: BorderRadius.circular(12),
@@ -298,7 +322,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                       )
                     else if (daysRemaining <= 3)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.orange.shade100,
                           borderRadius: BorderRadius.circular(12),
@@ -326,7 +353,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  Widget _buildStatusUpdateSection(TaskService taskService, AuthService authService) {
+  Widget _buildStatusUpdateSection(
+    TaskService taskService,
+    AuthService authService,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -336,17 +366,17 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           children: [
             const Text(
               'Update Status',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<TaskStatus>(
               value: _task.status,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
               ),
               items: TaskStatus.values.map((status) {
                 return DropdownMenuItem<TaskStatus>(
@@ -354,11 +384,13 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                   child: Text(Helpers.statusText(status)),
                 );
               }).toList(),
-              onChanged: _canUpdateStatus(context) ? (newStatus) {
-                if (newStatus != null) {
-                  _updateTaskStatus(taskService, authService, newStatus);
-                }
-              } : null,
+              onChanged: _canUpdateStatus(context)
+                  ? (newStatus) {
+                      if (newStatus != null) {
+                        _updateTaskStatus(taskService, authService, newStatus);
+                      }
+                    }
+                  : null,
             ),
           ],
         ),
@@ -366,15 +398,17 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  Future<void> _updateTaskStatus(TaskService taskService, AuthService authService, TaskStatus newStatus) async {
+  Future<void> _updateTaskStatus(
+    TaskService taskService,
+    AuthService authService,
+    TaskStatus newStatus,
+  ) async {
     try {
       final currentUserId = authService.currentUser?.uid ?? 'unknown';
 
-      await taskService.updateTask(
-        _task.id,
-        {'status': newStatus.name},
-        by: currentUserId,
-      );
+      await taskService.updateTask(_task.id, {
+        'status': newStatus.name,
+      }, by: currentUserId);
 
       setState(() {
         _task = _task.copyWith(status: newStatus);
@@ -384,9 +418,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         const SnackBar(content: Text('Status updated successfully')),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update status: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update status: $e')));
     }
   }
 
@@ -400,10 +434,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           children: [
             const Text(
               'Description',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             Text(
@@ -426,16 +457,16 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           children: [
             const Text(
               'Assigned To',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             if (_task.assignedTo.isEmpty)
               const Text(
                 'No one assigned',
-                style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
               )
             else
               Wrap(
@@ -464,10 +495,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               children: [
                 const Text(
                   'Attachments',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 TextButton.icon(
                   onPressed: () => _pickAndUploadAttachment(authService),
@@ -481,7 +509,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             _task.attachments.isEmpty
                 ? const Text(
                     'No attachments',
-                    style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontStyle: FontStyle.italic,
+                    ),
                   )
                 : Column(
                     children: _task.attachments.map((url) {
@@ -512,16 +543,15 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           children: [
             const Text(
               'Task History',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             SizedBox(
               height: 200,
               child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: Provider.of<TaskService>(context).streamTaskHistory(_task.id),
+                stream: Provider.of<TaskService>(
+                  context,
+                ).streamTaskHistory(_task.id),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -542,7 +572,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                     itemCount: history.length,
                     itemBuilder: (context, index) {
                       final entry = history[index];
-                      return _HistoryItem(entry: entry, userId: entry['userId']);
+                      return _HistoryItem(
+                        entry: entry,
+                        userId: entry['userId'],
+                      );
                     },
                   );
                 },
@@ -581,12 +614,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   void _saveDueDate(TaskService taskService, AuthService authService) async {
     try {
       final currentUserId = authService.currentUser?.uid ?? 'unknown';
-      
-      await taskService.updateTask(
-        _task.id,
-        {'dueDate': Timestamp.fromDate(_tempDueDate!)},
-        by: currentUserId,
-      );
+
+      await taskService.updateTask(_task.id, {
+        'dueDate': Timestamp.fromDate(_tempDueDate!),
+      }, by: currentUserId);
 
       setState(() {
         _task = _task.copyWith(dueDate: _tempDueDate!);
@@ -597,13 +628,17 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         const SnackBar(content: Text('Due date updated successfully')),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update due date: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update due date: $e')));
     }
   }
 
-  void _handleAction(String value, TaskService taskService, BuildContext context) {
+  void _handleAction(
+    String value,
+    TaskService taskService,
+    BuildContext context,
+  ) {
     switch (value) {
       case 'edit':
         if (_canEditTask(context)) {
@@ -628,7 +663,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Task'),
-        content: const Text('Are you sure you want to delete this task? This action cannot be undone.'),
+        content: const Text(
+          'Are you sure you want to delete this task? This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -644,23 +681,26 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  Future<void> _deleteTask(TaskService taskService, BuildContext context) async {
+  Future<void> _deleteTask(
+    TaskService taskService,
+    BuildContext context,
+  ) async {
     try {
       await taskService.deleteTask(_task.id);
-      
+
       if (mounted) {
         Navigator.pop(context); // Close dialog
         Navigator.pop(context); // Go back to previous screen
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Task deleted successfully')),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete task: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to delete task: $e')));
       }
     }
   }
@@ -672,7 +712,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
 
       final filePath = result.files.single.path;
       if (filePath == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selected file not available')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selected file not available')),
+        );
         return;
       }
 
@@ -689,10 +731,14 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
 
       if (mounted) Navigator.of(context).pop();
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attachment uploaded')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Attachment uploaded')));
     } catch (e) {
       if (mounted) Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to upload attachment: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload attachment: $e')),
+      );
     }
   }
 
@@ -700,10 +746,14 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     try {
       final uri = Uri.parse(url);
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open attachment')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open attachment')),
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to open attachment: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to open attachment: $e')));
     }
   }
 }
@@ -725,7 +775,7 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
+class _InfoRow extends StatefulWidget {
   final IconData icon;
   final String label;
   final String value;
@@ -737,25 +787,27 @@ class _InfoRow extends StatelessWidget {
   });
 
   @override
+  State<_InfoRow> createState() => _InfoRowState();
+}
+
+class _InfoRowState extends State<_InfoRow> {
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: Colors.grey),
+          Icon(widget.icon, size: 18, color: Colors.grey),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  label,
+                  widget.label,
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                Text(
-                  value,
-                  style: const TextStyle(fontSize: 14),
-                ),
+                Text(widget.value, style: const TextStyle(fontSize: 14)),
               ],
             ),
           ),
@@ -795,12 +847,14 @@ class _HistoryItemState extends State<_HistoryItem> {
   @override
   Widget build(BuildContext context) {
     final timestamp = (widget.entry['timestamp'] as Timestamp).toDate();
-    
+
     return FutureBuilder(
       future: _userNameFuture,
       builder: (context, snapshot) {
         final userName = snapshot.data ?? 'Loading...';
-        final firstLetter = userName.isNotEmpty ? userName[0].toUpperCase() : '?';
+        final firstLetter = userName.isNotEmpty
+            ? userName[0].toUpperCase()
+            : '?';
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(12),
@@ -834,21 +888,30 @@ class _HistoryItemState extends State<_HistoryItem> {
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
                           _formatChanges(widget.entry['changes']),
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
                         ),
                       ),
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         'By: $userName',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
                       ),
                     ),
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
                         Helpers.formatDateTime(timestamp),
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
                       ),
                     ),
                   ],
@@ -857,7 +920,7 @@ class _HistoryItemState extends State<_HistoryItem> {
             ],
           ),
         );
-      }
+      },
     );
   }
 
@@ -906,13 +969,12 @@ class _AssigneeChipState extends State<_AssigneeChip> {
       future: _userNameFuture,
       builder: (context, snapshot) {
         final userName = snapshot.data ?? 'Loading...';
-        final firstLetter = userName.isNotEmpty ? userName[0].toUpperCase() : '?';
+        final firstLetter = userName.isNotEmpty
+            ? userName[0].toUpperCase()
+            : '?';
 
         return Chip(
-          label: Text(
-            userName,
-            style: const TextStyle(fontSize: 12),
-          ),
+          label: Text(userName, style: const TextStyle(fontSize: 12)),
           avatar: CircleAvatar(
             radius: 12,
             backgroundColor: Colors.blue.shade200,

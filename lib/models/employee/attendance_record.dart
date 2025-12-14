@@ -71,6 +71,15 @@ class AttendanceRecord {
     required this.updatedAt,
   });
 
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value) ?? 0.0;
+    }
+    return 0.0;
+  }
+
   factory AttendanceRecord.fromMap(String id, Map<String, dynamic> map) {
     return AttendanceRecord(
       id: id,
@@ -84,15 +93,15 @@ class AttendanceRecord {
       shiftOutTime: map['shiftOutTime'] ?? '06:30 PM',
       inTime: map['inTime'],
       outTime: map['outTime'],
-      totHrs: (map['totHrs'] ?? 0.0).toDouble(),
-      lateHrs: (map['lateHrs'] ?? 0.0).toDouble(),
-      lateMark: (map['lateMark'] ?? 0.0).toDouble(),
-      otHrs: (map['otHrs'] ?? 0.0).toDouble(),
+      totHrs: _parseDouble(map['totHrs']),
+      lateHrs: _parseDouble(map['lateHrs']),
+      lateMark: _parseDouble(map['lateMark']),
+      otHrs: _parseDouble(map['otHrs']),
       type1: map['type1'] ?? 'ABS',
-      portion: (map['portion'] ?? 0.0).toDouble(),
+      portion: _parseDouble(map['portion']),
       type2: map['type2'] ?? '---',
       coordinates: map['coordinates'],
-      totalDistanceTraveled: (map['totalDistanceTraveled'] ?? 0.0).toDouble(),
+      totalDistanceTraveled: _parseDouble(map['totalDistanceTraveled']),
       isOnBreak: map['isOnBreak'] ?? false,
       totalBreakSeconds: map['totalBreakSeconds'] ?? 0,
       breakStartTime: map['breakStartTime'],

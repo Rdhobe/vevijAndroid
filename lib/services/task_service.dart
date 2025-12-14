@@ -3,6 +3,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../models/tasks/task_model.dart';
 import 'dart:io';
 import 'package:vevij/services/notification_service.dart';
+import 'package:rxdart/rxdart.dart';
 
 class TaskService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -80,7 +81,7 @@ class TaskService {
     String reason,
   ) async {
     try {
-        await _firestore.collection('tasks').doc(taskId).update({
+      await _firestore.collection('tasks').doc(taskId).update({
         'revisedDueDate': Timestamp.fromDate(newDueDate),
         'updatedAt': Timestamp.fromDate(DateTime.now()),
       });
@@ -105,7 +106,8 @@ class TaskService {
 
   // Stream tasks for specific user
   Stream<List<TaskModel>> streamTasksForUser(String userId) {
-    return _firestore
+    // Assigned tasks stream
+    final assignedTasks = _firestore
         .collection('tasks')
         .where('assignedTo', arrayContains: userId)
         .orderBy('dueDate')
@@ -115,6 +117,39 @@ class TaskService {
               .map((doc) => TaskModel.fromMap(doc.data()))
               .toList(),
         );
+
+    // Watched tasks stream
+    final watchedTasks = _firestore
+        .collection('tasks')
+        .where('monitors', arrayContains: userId)
+        .orderBy('dueDate')
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => TaskModel.fromMap(doc.data()))
+              .toList(),
+        );
+
+    // Combine both streams
+    return Rx.combineLatest2<List<TaskModel>, List<TaskModel>, List<TaskModel>>(
+      assignedTasks,
+      watchedTasks,
+      (assigned, watched) {
+        final Map<String, TaskModel> uniqueTasks = {};
+
+        for (final task in assigned) {
+          uniqueTasks[task.id] = task;
+        }
+        for (final task in watched) {
+          uniqueTasks[task.id] = task;
+        }
+
+        final tasks = uniqueTasks.values.toList()
+          ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+
+        return tasks;
+      },
+    );
   }
 
   // Create new task
