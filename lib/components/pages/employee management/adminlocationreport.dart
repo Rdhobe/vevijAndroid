@@ -12,10 +12,11 @@ class AdminLocationMonitorPage extends StatefulWidget {
   const AdminLocationMonitorPage({super.key});
 
   @override
-  State<AdminLocationMonitorPage> createState() => _AdminLocationMonitorPageState();
+  State<AdminLocationMonitorPage> createState() =>
+      _AdminLocationMonitorPageState();
 }
 
-class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage> 
+class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
     with SingleTickerProviderStateMixin {
   DateTime selectedDate = DateTime.now();
   String? selectedUserId;
@@ -26,7 +27,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
   bool isLoading = false;
   bool isLoadingAttendance = false;
   String? selectedAttendanceId;
-  
+
   int totalLocations = 0;
   Duration totalWorkDuration = Duration.zero;
   Duration totalBreakDuration = Duration.zero;
@@ -36,7 +37,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
   GoogleMapController? mapController;
   Set<Marker> markers = {};
   Set<Polyline> polylines = {};
-  
+
   late TabController _tabController;
   int _currentTabIndex = 0;
 
@@ -62,8 +63,9 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
   }
 
   bool get isMobile => MediaQuery.of(context).size.width < 600;
-  bool get isTablet => MediaQuery.of(context).size.width >= 600 && 
-                       MediaQuery.of(context).size.width < 1024;
+  bool get isTablet =>
+      MediaQuery.of(context).size.width >= 600 &&
+      MediaQuery.of(context).size.width < 1024;
   bool get isDesktop => MediaQuery.of(context).size.width >= 1024;
 
   Future<void> _loadEmployees() async {
@@ -107,38 +109,38 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       for (var doc in attendanceSnapshot.docs) {
         var data = doc.data() as Map<String, dynamic>;
         String userId = data['userId'] ?? '';
-        
+
         if (userId.isNotEmpty) {
           DocumentSnapshot userDoc = await FirebaseFirestore.instance
               .collection('users')
               .doc(userId)
               .get();
-          
-          if (userDoc.exists && 
-              (userDoc.data() as Map<String, dynamic>)['designation'] == 'Supervisor') {
+
+          if (userDoc.exists &&
+              (userDoc.data() as Map<String, dynamic>)['designation'] ==
+                  'Supervisor') {
             var userData = userDoc.data() as Map<String, dynamic>;
-            
-            QuerySnapshot locationSnapshot = await FirebaseFirestore.instance
-                .collection('attendance')
-                .doc(doc.id)
-                .collection('locationHistory')
-                .get();
-            
+
+            int locCount = 0;
+            if (data['loginCoordinates'] != null) locCount++;
+            if (data['logoutCoordinates'] != null) locCount++;
+
             tempList.add({
               'userId': userId,
               'userName': userData['empName'] ?? 'Unknown',
               'empId': userData['empCode'] ?? '',
               'inTime': data['inTime'] ?? 'N/A',
               'outTime': data['outTime'] ?? 'N/A',
-              'locationCount': locationSnapshot.docs.length,
+              'locationCount': locCount,
               'status': data['outTime'] != null ? 'Completed' : 'Active',
             });
           }
         }
       }
 
-      tempList.sort((a, b) => 
-          (a['userName'] as String).compareTo(b['userName'] as String));
+      tempList.sort(
+        (a, b) => (a['userName'] as String).compareTo(b['userName'] as String),
+      );
 
       setState(() {
         employeesWithAttendance = tempList;
@@ -181,37 +183,102 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       }
 
       selectedAttendanceId = attendanceSnapshot.docs.first.id;
-      var attendanceData = 
+      var attendanceData =
           attendanceSnapshot.docs.first.data() as Map<String, dynamic>;
 
       loginTime = attendanceData['inTime'];
       logoutTime = attendanceData['outTime'];
-      
+
       double totHrs = attendanceData['totHrs']?.toDouble() ?? 0.0;
       totalWorkDuration = Duration(minutes: (totHrs * 60).toInt());
 
-      QuerySnapshot locationSnapshot = await FirebaseFirestore.instance
-          .collection('attendance')
-          .doc(selectedAttendanceId)
-          .collection('locationHistory')
-          .orderBy('timestamp', descending: false)
-          .get();
+      locationHistory = [];
 
-      locationHistory = locationSnapshot.docs.map((doc) {
-        var data = doc.data() as Map<String, dynamic>;
-        return {
-          'id': doc.id,
-          'timestamp': data['timestamp'],
-          'coordinates': data['coordinates'] ?? 'Unknown',
-          'latitude': data['latitude'],
-          'longitude': data['longitude'],
-          'accuracy': data['accuracy'],
-          'activityType': data['activityType'] ?? 'working',
-          'status': data['status'] ?? 'working',
-        };
-      }).toList();
+      // Add Login Location
+      if (attendanceData['loginCoordinates'] != null) {
+        DateTime? parsedTime;
+        try {
+          if (attendanceData['inTime'] != null) {
+            parsedTime = DateFormat('h:mm a').parse(attendanceData['inTime']);
+            // Adjust date to selected date
+            parsedTime = DateTime(
+              selectedDate.year,
+              selectedDate.month,
+              selectedDate.day,
+              parsedTime.hour,
+              parsedTime.minute,
+            );
+          }
+        } catch (e) {
+          // Time parsing failed
+        }
 
-      _calculateStatistics();
+        List<String> coords = (attendanceData['loginCoordinates'] as String)
+            .split(', ');
+        if (coords.length == 2) {
+          double lat = double.parse(coords[0].trim());
+          double lng = double.parse(coords[1].trim());
+
+          locationHistory.add({
+            'id': 'login',
+            'timestamp': parsedTime != null
+                ? Timestamp.fromDate(parsedTime)
+                : Timestamp.fromDate(DateTime.now()),
+            'coordinates': attendanceData['loginCoordinates'],
+            'latitude': lat,
+            'longitude': lng,
+            'accuracy': 0.0,
+            'activityType': 'login',
+            'status': 'present', // or from type1
+          });
+        }
+      }
+
+      // Add Logout Location
+      if (attendanceData['logoutCoordinates'] != null) {
+        DateTime? parsedTime;
+        try {
+          if (attendanceData['outTime'] != null) {
+            parsedTime = DateFormat('h:mm a').parse(attendanceData['outTime']);
+            // Adjust date
+            parsedTime = DateTime(
+              selectedDate.year,
+              selectedDate.month,
+              selectedDate.day,
+              parsedTime.hour,
+              parsedTime.minute,
+            );
+          }
+        } catch (e) {
+          // Time parsing failed
+        }
+
+        List<String> coords = (attendanceData['logoutCoordinates'] as String)
+            .split(', ');
+        if (coords.length == 2) {
+          double lat = double.parse(coords[0].trim());
+          double lng = double.parse(coords[1].trim());
+
+          locationHistory.add({
+            'id': 'logout',
+            'timestamp': parsedTime != null
+                ? Timestamp.fromDate(parsedTime)
+                : Timestamp.fromDate(DateTime.now()),
+            'coordinates': attendanceData['logoutCoordinates'],
+            'latitude': lat,
+            'longitude': lng,
+            'accuracy': 0.0,
+            'activityType': 'logout',
+            'status': 'checked_out',
+          });
+        }
+      }
+
+      // Parse total break duration directly
+      int breakSeconds = attendanceData['totalBreakSeconds'] ?? 0;
+      totalBreakDuration = Duration(seconds: breakSeconds);
+
+      // _calculateStatistics(); // Removed as we use direct field parsing
       _buildMapData();
 
       setState(() {
@@ -229,25 +296,6 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
     }
   }
 
-  void _calculateStatistics() {
-    if (locationHistory.isEmpty) return;
-
-    Duration breakTime = Duration.zero;
-    DateTime? lastBreakStart;
-
-    for (var location in locationHistory) {
-      if (location['activityType'] == 'break_start') {
-        lastBreakStart = (location['timestamp'] as Timestamp).toDate();
-      } else if (location['activityType'] == 'break_end' && lastBreakStart != null) {
-        DateTime breakEnd = (location['timestamp'] as Timestamp).toDate();
-        breakTime += breakEnd.difference(lastBreakStart);
-        lastBreakStart = null;
-      }
-    }
-
-    totalBreakDuration = breakTime;
-  }
-
   void _buildMapData() {
     if (locationHistory.isEmpty) return;
 
@@ -257,7 +305,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
 
     for (int i = 0; i < locationHistory.length; i++) {
       var location = locationHistory[i];
-      
+
       if (location['latitude'] != null && location['longitude'] != null) {
         double lat = (location['latitude'] as num).toDouble();
         double lng = (location['longitude'] as num).toDouble();
@@ -266,13 +314,14 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
 
         DateTime timestamp = (location['timestamp'] as Timestamp).toDate();
         String activityType = location['activityType'] ?? 'working';
-        
+
         markers.add(
           Marker(
             markerId: MarkerId('marker_$i'),
             position: position,
             icon: BitmapDescriptor.defaultMarkerWithHue(
-                _getMarkerHue(activityType)),
+              _getMarkerHue(activityType),
+            ),
             infoWindow: InfoWindow(
               title: '#${i + 1} - ${_formatActivityType(activityType)}',
               snippet: DateFormat('hh:mm:ss a').format(timestamp),
@@ -282,24 +331,11 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
         );
       }
     }
-
-    if (pathPoints.length > 1) {
-      polylines.add(
-        Polyline(
-          polylineId: PolylineId('journey_path'),
-          points: pathPoints,
-          color: Colors.blue.shade600,
-          width: 5,
-          patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-          geodesic: true,
-        ),
-      );
-    }
   }
 
   void _showLocationDetails(Map<String, dynamic> location, int index) {
     DateTime timestamp = (location['timestamp'] as Timestamp).toDate();
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -318,8 +354,9 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _getActivityColor(location['activityType'])
-                        .withOpacity(0.2),
+                    color: _getActivityColor(
+                      location['activityType'],
+                    ).withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -353,14 +390,26 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
               ],
             ),
             SizedBox(height: 20),
-            _buildDetailRow(Icons.access_time, 'Time', 
-                DateFormat('hh:mm:ss a').format(timestamp)),
-            _buildDetailRow(Icons.location_on, 'Address', 
-                location['coordinates'] ?? 'Unknown'),
-            _buildDetailRow(Icons.gps_fixed, 'Coordinates', 
-                '${location['latitude']?.toStringAsFixed(6)}, ${location['longitude']?.toStringAsFixed(6)}'),
-            _buildDetailRow(Icons.gps_not_fixed, 'Accuracy', 
-                '${location['accuracy']?.toStringAsFixed(2) ?? 'N/A'} meters'),
+            _buildDetailRow(
+              Icons.access_time,
+              'Time',
+              DateFormat('hh:mm:ss a').format(timestamp),
+            ),
+            _buildDetailRow(
+              Icons.location_on,
+              'Address',
+              location['coordinates'] ?? 'Unknown',
+            ),
+            _buildDetailRow(
+              Icons.gps_fixed,
+              'Coordinates',
+              '${location['latitude']?.toStringAsFixed(6)}, ${location['longitude']?.toStringAsFixed(6)}',
+            ),
+            _buildDetailRow(
+              Icons.gps_not_fixed,
+              'Accuracy',
+              '${location['accuracy']?.toStringAsFixed(2) ?? 'N/A'} meters',
+            ),
           ],
         ),
       ),
@@ -390,10 +439,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                 SizedBox(height: 2),
                 Text(
                   value,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -405,23 +451,30 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
 
   double _getMarkerHue(String activityType) {
     switch (activityType) {
-      case 'login': return BitmapDescriptor.hueGreen;
-      case 'logout': return BitmapDescriptor.hueRed;
-      case 'break_start': return BitmapDescriptor.hueOrange;
-      case 'break_end': return BitmapDescriptor.hueBlue;
-      case 'working': return BitmapDescriptor.hueAzure;
-      case 'on_break': return BitmapDescriptor.hueYellow;
-      default: return BitmapDescriptor.hueViolet;
+      case 'login':
+        return BitmapDescriptor.hueGreen;
+      case 'logout':
+        return BitmapDescriptor.hueRed;
+      case 'break_start':
+        return BitmapDescriptor.hueOrange;
+      case 'break_end':
+        return BitmapDescriptor.hueBlue;
+      case 'working':
+        return BitmapDescriptor.hueAzure;
+      case 'on_break':
+        return BitmapDescriptor.hueYellow;
+      default:
+        return BitmapDescriptor.hueViolet;
     }
   }
 
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
-    
+
     if (locationHistory.isNotEmpty && locationHistory[0]['latitude'] != null) {
       double lat = (locationHistory[0]['latitude'] as num).toDouble();
       double lng = (locationHistory[0]['longitude'] as num).toDouble();
-      
+
       controller.animateCamera(
         CameraUpdate.newLatLngZoom(LatLng(lat, lng), 13),
       );
@@ -438,7 +491,9 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       context: context,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
           child: Container(
             constraints: BoxConstraints(maxWidth: 500),
             padding: EdgeInsets.all(32),
@@ -455,8 +510,11 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                     ),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.file_download_outlined, 
-                      size: 48, color: Colors.white),
+                  child: Icon(
+                    Icons.file_download_outlined,
+                    size: 48,
+                    color: Colors.white,
+                  ),
                 ),
                 SizedBox(height: 24),
                 Text(
@@ -471,10 +529,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                 Text(
                   'Choose the report period you want to export',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
                 SizedBox(height: 32),
                 _buildReportOption(
@@ -615,26 +670,35 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
 
     try {
       _showSnackBar('Generating $reportType report...', isError: false);
-      
+
       List<List<dynamic>> rows = [];
       DateTime startDate, endDate;
       String reportTitle;
 
       switch (reportType) {
         case 'daily':
-          startDate = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+          startDate = DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            selectedDate.day,
+          );
           endDate = startDate.add(Duration(days: 1));
-          reportTitle = 'Daily Location Report - ${DateFormat('dd MMM yyyy').format(selectedDate)}';
+          reportTitle =
+              'Daily Location Report - ${DateFormat('dd MMM yyyy').format(selectedDate)}';
           break;
         case 'weekly':
-          startDate = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
+          startDate = selectedDate.subtract(
+            Duration(days: selectedDate.weekday - 1),
+          );
           endDate = startDate.add(Duration(days: 7));
-          reportTitle = 'Weekly Location Report - ${_getWeekRangeText(selectedDate)}';
+          reportTitle =
+              'Weekly Location Report - ${_getWeekRangeText(selectedDate)}';
           break;
         case 'monthly':
           startDate = DateTime(selectedDate.year, selectedDate.month, 1);
           endDate = DateTime(selectedDate.year, selectedDate.month + 1, 1);
-          reportTitle = 'Monthly Location Report - ${DateFormat('MMMM yyyy').format(selectedDate)}';
+          reportTitle =
+              'Monthly Location Report - ${DateFormat('MMMM yyyy').format(selectedDate)}';
           break;
         default:
           startDate = selectedDate;
@@ -648,17 +712,27 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       rows.add(['Employee Information']);
       rows.add(['Name', selectedUserName ?? 'Unknown']);
       rows.add(['Employee ID', selectedUserId ?? '']);
-      rows.add(['Report Period''$reportType'.toUpperCase()]);
-      rows.add(['Generated On', DateFormat('dd MMM yyyy HH:mm').format(DateTime.now())]);
+      rows.add([
+        'Report Period'
+                '$reportType'
+            .toUpperCase(),
+      ]);
+      rows.add([
+        'Generated On',
+        DateFormat('dd MMM yyyy HH:mm').format(DateTime.now()),
+      ]);
       rows.add(['']);
 
       // Fetch data for date range
       List<Map<String, dynamic>> allLocationData = [];
-      
-      for (DateTime date = startDate; date.isBefore(endDate); 
-           date = date.add(Duration(days: 1))) {
+
+      for (
+        DateTime date = startDate;
+        date.isBefore(endDate);
+        date = date.add(Duration(days: 1))
+      ) {
         String dateKey = DateFormat('dd-MMM-yy').format(date);
-        
+
         QuerySnapshot attendanceSnapshot = await FirebaseFirestore.instance
             .collection('attendance')
             .where('userId', isEqualTo: selectedUserId)
@@ -669,29 +743,57 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
         if (attendanceSnapshot.docs.isNotEmpty) {
           var attendanceDoc = attendanceSnapshot.docs.first;
           var attendanceData = attendanceDoc.data() as Map<String, dynamic>;
-          
-          QuerySnapshot locationSnapshot = await FirebaseFirestore.instance
-              .collection('attendance')
-              .doc(attendanceDoc.id)
-              .collection('locationHistory')
-              .orderBy('timestamp', descending: false)
-              .get();
 
-          if (locationSnapshot.docs.isNotEmpty) {
+          List<dynamic> simulatedLocations = []; // Simulated for report
+          if (attendanceData['loginCoordinates'] != null) {
+            simulatedLocations.add({
+              'timestamp': Timestamp.now(), // Fallback
+              'activityType': 'login',
+              'status': 'present',
+              'coordinates': attendanceData['loginCoordinates'],
+              'latitude': double.tryParse(
+                attendanceData['loginCoordinates'].toString().split(',')[0],
+              ),
+              'longitude': double.tryParse(
+                attendanceData['loginCoordinates'].toString().split(',')[1],
+              ),
+              'accuracy': 0.0,
+            });
+          }
+          if (attendanceData['logoutCoordinates'] != null) {
+            simulatedLocations.add({
+              'timestamp': Timestamp.now(), // Fallback
+              'activityType': 'logout',
+              'status': 'checked_out',
+              'coordinates': attendanceData['logoutCoordinates'],
+              'latitude': double.tryParse(
+                attendanceData['logoutCoordinates'].toString().split(',')[0],
+              ),
+              'longitude': double.tryParse(
+                attendanceData['logoutCoordinates'].toString().split(',')[1],
+              ),
+              'accuracy': 0.0,
+            });
+          }
+
+          if (simulatedLocations.isNotEmpty) {
             allLocationData.add({
               'date': date,
               'dateKey': dateKey,
               'inTime': attendanceData['inTime'] ?? 'N/A',
               'outTime': attendanceData['outTime'] ?? 'N/A',
               'totHrs': attendanceData['totHrs']?.toDouble() ?? 0.0,
-              'locations': locationSnapshot.docs,
+              'locations': simulatedLocations, // Use simulated list
             });
           }
         }
       }
 
       if (allLocationData.isEmpty) {
-        _showSnackBar('No data available for $reportType report', isError: true);
+        _showSnackBar(
+          'No data available for $reportType report',
+          isError: true,
+        );
         return;
       }
 
@@ -699,41 +801,57 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       rows.add(['EXECUTIVE SUMMARY']);
       rows.add(['']);
       rows.add(['Metric', 'Value']);
-      
+
       int totalDays = allLocationData.length;
       int totalLocationsTracked = 0;
       double totalHours = 0;
-      
+
       for (var dayData in allLocationData) {
         int locationCount = (dayData['locations'] as List).length;
         totalLocationsTracked += locationCount;
         totalHours += dayData['totHrs'] as double;
       }
-      
+
       rows.add(['Total Working Days', totalDays.toString()]);
-      rows.add(['Total Work Hours', _formatDuration(Duration(minutes: (totalHours * 60).toInt()))]);
+      rows.add([
+        'Total Work Hours',
+        _formatDuration(Duration(minutes: (totalHours * 60).toInt())),
+      ]);
       rows.add(['Total Locations Tracked', totalLocationsTracked.toString()]);
-      rows.add(['Average Locations Per Day', 
-                (totalLocationsTracked / totalDays).toStringAsFixed(1)]);
+      rows.add([
+        'Average Locations Per Day',
+        (totalLocationsTracked / totalDays).toStringAsFixed(1),
+      ]);
       rows.add(['']);
 
       // Daily Summary
       rows.add(['DAILY ATTENDANCE SUMMARY']);
       rows.add(['']);
-      rows.add(['Date', 'Day', 'Login Time', 'Logout Time', 'Work Hours', 
-                'Locations Tracked', 'Status']);
-      
+      rows.add([
+        'Date',
+        'Day',
+        'Login Time',
+        'Logout Time',
+        'Work Hours',
+        'Locations Tracked',
+        'Status',
+      ]);
+
       for (var dayData in allLocationData) {
         int locationCount = (dayData['locations'] as List).length;
         String dayName = DateFormat('EEEE').format(dayData['date']);
-        String status = dayData['outTime'] != 'N/A' ? 'Completed' : 'In Progress';
-        
+        String status = dayData['outTime'] != 'N/A'
+            ? 'Completed'
+            : 'In Progress';
+
         rows.add([
           DateFormat('dd MMM yyyy').format(dayData['date']),
           dayName,
           dayData['inTime'],
           dayData['outTime'],
-          _formatDuration(Duration(minutes: ((dayData['totHrs'] as double) * 60).toInt())),
+          _formatDuration(
+            Duration(minutes: ((dayData['totHrs'] as double) * 60).toInt()),
+          ),
           locationCount.toString(),
           status,
         ]);
@@ -743,16 +861,29 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       // Detailed Location History
       rows.add(['DETAILED LOCATION TRACKING']);
       rows.add(['']);
-      rows.add(['#', 'Date', 'Day', 'Time', 'Full Timestamp', 'Activity Type', 
-                'Status', 'Address', 'Latitude', 'Longitude', 'Accuracy (m)']);
+      rows.add([
+        '#',
+        'Date',
+        'Day',
+        'Time',
+        'Full Timestamp',
+        'Activity Type',
+        'Status',
+        'Address',
+        'Latitude',
+        'Longitude',
+        'Accuracy (m)',
+      ]);
 
       int locationNumber = 1;
       for (var dayData in allLocationData) {
-        for (var locationDoc in (dayData['locations'] as List<QueryDocumentSnapshot>)) {
-          var location = locationDoc.data() as Map<String, dynamic>;
+        for (var locationMap in (dayData['locations'] as List<dynamic>)) {
+          var location = locationMap is QueryDocumentSnapshot
+              ? locationMap.data() as Map<String, dynamic>
+              : locationMap as Map<String, dynamic>;
           DateTime timestamp = (location['timestamp'] as Timestamp).toDate();
           String dayName = DateFormat('EEE').format(timestamp);
-          
+
           rows.add([
             locationNumber.toString(),
             DateFormat('dd MMM yyyy').format(timestamp),
@@ -773,19 +904,21 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       rows.add(['']);
       rows.add(['Report End']);
       rows.add(['']);
-      rows.add(['Note: This is an automated report generated by the Location Monitoring System']);
+      rows.add([
+        'Note: This is an automated report generated by the Location Monitoring System',
+      ]);
 
       String csv = const ListToCsvConverter().convert(rows);
-      final String fileName = 
+      final String fileName =
           'Location_${reportType}_${selectedUserName?.replaceAll(' ', '_')}_${DateFormat('ddMMMyyyy').format(selectedDate)}.csv';
-      
+
       final Directory? directory = await getExternalStorageDirectory();
       final String path = '${directory?.path}/$fileName';
       final File file = File(path);
       await file.writeAsString(csv);
 
       await Share.shareXFiles(
-        [XFile(path)], 
+        [XFile(path)],
         text: '$reportTitle for $selectedUserName',
         subject: reportTitle,
       );
@@ -804,13 +937,20 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
 
   String _formatActivityType(String? type) {
     switch (type) {
-      case 'login': return 'Login';
-      case 'logout': return 'Logout';
-      case 'break_start': return 'Break Start';
-      case 'break_end': return 'Break End';
-      case 'working': return 'Working';
-      case 'on_break': return 'On Break';
-      default: return type ?? 'Unknown';
+      case 'login':
+        return 'Login';
+      case 'logout':
+        return 'Logout';
+      case 'break_start':
+        return 'Break Start';
+      case 'break_end':
+        return 'Break End';
+      case 'working':
+        return 'Working';
+      case 'on_break':
+        return 'On Break';
+      default:
+        return type ?? 'Unknown';
     }
   }
 
@@ -820,25 +960,39 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
 
   Color _getActivityColor(String? activityType) {
     switch (activityType) {
-      case 'login': return Colors.green.shade600;
-      case 'logout': return Colors.red.shade600;
-      case 'break_start': return Colors.orange.shade600;
-      case 'break_end': return Colors.blue.shade600;
-      case 'working': return Colors.blue.shade700;
-      case 'on_break': return Colors.amber.shade700;
-      default: return Colors.grey.shade600;
+      case 'login':
+        return Colors.green.shade600;
+      case 'logout':
+        return Colors.red.shade600;
+      case 'break_start':
+        return Colors.orange.shade600;
+      case 'break_end':
+        return Colors.blue.shade600;
+      case 'working':
+        return Colors.blue.shade700;
+      case 'on_break':
+        return Colors.amber.shade700;
+      default:
+        return Colors.grey.shade600;
     }
   }
 
   IconData _getActivityIcon(String? activityType) {
     switch (activityType) {
-      case 'login': return Icons.login;
-      case 'logout': return Icons.logout;
-      case 'break_start': return Icons.coffee;
-      case 'break_end': return Icons.work;
-      case 'working': return Icons.work_outline;
-      case 'on_break': return Icons.pause_circle_outline;
-      default: return Icons.location_on;
+      case 'login':
+        return Icons.login;
+      case 'logout':
+        return Icons.logout;
+      case 'break_start':
+        return Icons.coffee;
+      case 'break_end':
+        return Icons.work;
+      case 'working':
+        return Icons.work_outline;
+      case 'on_break':
+        return Icons.pause_circle_outline;
+      default:
+        return Icons.location_on;
     }
   }
 
@@ -861,9 +1015,13 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
               ),
             ],
           ),
-          backgroundColor: isError ? Colors.red.shade600 : Colors.green.shade600,
+          backgroundColor: isError
+              ? Colors.red.shade600
+              : Colors.green.shade600,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           margin: EdgeInsets.all(16),
           duration: Duration(seconds: 3),
         ),
@@ -908,7 +1066,6 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       backgroundColor: Colors.grey[50],
       appBar: _buildAppBar(),
       body: isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
-      
     );
   }
 
@@ -928,15 +1085,15 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
           if (selectedUserName != null)
             Text(
               selectedUserName!,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.normal,
-              ),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
             ),
         ],
       ),
       actions: [
-        IconButton(onPressed: _showReportTypeDialog, icon: Icon(Icons.download)),
+        IconButton(
+          onPressed: _showReportTypeDialog,
+          icon: Icon(Icons.download),
+        ),
         if (selectedUserId != null && isDesktop)
           Padding(
             padding: EdgeInsets.only(right: 16),
@@ -971,18 +1128,9 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
               indicatorWeight: 3,
               labelStyle: TextStyle(fontWeight: FontWeight.bold),
               tabs: [
-                Tab(
-                  icon: Icon(Icons.people_alt_outlined),
-                  text: 'Employees',
-                ),
-                Tab(
-                  icon: Icon(Icons.map_outlined),
-                  text: 'Map',
-                ),
-                Tab(
-                  icon: Icon(Icons.timeline),
-                  text: 'Timeline',
-                ),
+                Tab(icon: Icon(Icons.people_alt_outlined), text: 'Employees'),
+                Tab(icon: Icon(Icons.map_outlined), text: 'Map'),
+                Tab(icon: Icon(Icons.timeline), text: 'Timeline'),
               ],
             )
           : null,
@@ -1029,10 +1177,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                 child: Row(
                   children: [
                     // Map View
-                    Expanded(
-                      flex: 3,
-                      child: _buildMapSection(),
-                    ),
+                    Expanded(flex: 3, child: _buildMapSection()),
                     // Timeline View
                     Container(
                       width: 420,
@@ -1213,10 +1358,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
               Text(
                 'No attendance records for\n${DateFormat('dd MMM yyyy').format(selectedDate)}',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[500],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
               ),
             ],
           ),
@@ -1230,7 +1372,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
       itemBuilder: (context, index) {
         var employee = employeesWithAttendance[index];
         bool isSelected = employee['userId'] == selectedUserId;
-        
+
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
@@ -1246,9 +1388,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                 : null,
           ),
           child: Material(
-            color: isSelected
-                ? Colors.blue.shade50
-                : Colors.transparent,
+            color: isSelected ? Colors.blue.shade50 : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
             child: InkWell(
               onTap: () {
@@ -1288,9 +1428,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: (isSelected
-                                      ? Colors.blue
-                                      : Colors.grey)
+                              color: (isSelected ? Colors.blue : Colors.grey)
                                   .withOpacity(0.3),
                               blurRadius: 8,
                               offset: Offset(0, 2),
@@ -1331,26 +1469,36 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                           SizedBox(height: 6),
                           Row(
                             children: [
-                              Icon(Icons.badge_outlined,
-                                  size: 14, color: Colors.grey[600]),
+                              Icon(
+                                Icons.badge_outlined,
+                                size: 14,
+                                color: Colors.grey[600],
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 employee['empId'],
                                 style: TextStyle(
-                                    fontSize: 13, color: Colors.grey[600]),
+                                  fontSize: 13,
+                                  color: Colors.grey[600],
+                                ),
                               ),
                             ],
                           ),
                           SizedBox(height: 4),
                           Row(
                             children: [
-                              Icon(Icons.access_time,
-                                  size: 14, color: Colors.grey[600]),
+                              Icon(
+                                Icons.access_time,
+                                size: 14,
+                                color: Colors.grey[600],
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 '${employee['inTime']} - ${employee['outTime']}',
                                 style: TextStyle(
-                                    fontSize: 12, color: Colors.grey[600]),
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
                               ),
                             ],
                           ),
@@ -1362,21 +1510,30 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Container(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: employee['status'] == 'Active'
-                                  ? [Colors.green.shade400, Colors.green.shade600]
-                                  : [Colors.grey.shade300, Colors.grey.shade400],
+                                  ? [
+                                      Colors.green.shade400,
+                                      Colors.green.shade600,
+                                    ]
+                                  : [
+                                      Colors.grey.shade300,
+                                      Colors.grey.shade400,
+                                    ],
                             ),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: (employee['status'] == 'Active'
-                                        ? Colors.green
-                                        : Colors.grey)
-                                    .withOpacity(0.3),
+                                color:
+                                    (employee['status'] == 'Active'
+                                            ? Colors.green
+                                            : Colors.grey)
+                                        .withOpacity(0.3),
                                 blurRadius: 4,
                                 offset: Offset(0, 2),
                               ),
@@ -1407,19 +1564,26 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                         ),
                         SizedBox(height: 10),
                         Container(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.purple.shade50,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                                color: Colors.purple.shade200, width: 1.5),
+                              color: Colors.purple.shade200,
+                              width: 1.5,
+                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.location_on,
-                                  size: 14, color: Colors.purple.shade700),
+                              Icon(
+                                Icons.location_on,
+                                size: 14,
+                                color: Colors.purple.shade700,
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 '${employee['locationCount']}',
@@ -1560,7 +1724,11 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
   }
 
   Widget _buildStatCard(
-      String label, String value, IconData icon, Color color) {
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -1670,10 +1838,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                 Text(
                   'Select an employee to view\ntheir location timeline',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                 ),
               ],
             ),
@@ -1767,7 +1932,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                   gradient: LinearGradient(
                     colors: [
                       activityColor.withOpacity(0.3),
-                      activityColor.withOpacity(0.1)
+                      activityColor.withOpacity(0.1),
                     ],
                   ),
                   shape: BoxShape.circle,
@@ -1790,7 +1955,10 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                   height: 80,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [activityColor.withOpacity(0.3), Colors.grey.shade200],
+                      colors: [
+                        activityColor.withOpacity(0.3),
+                        Colors.grey.shade200,
+                      ],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -1806,7 +1974,10 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: activityColor.withOpacity(0.3), width: 2),
+                border: Border.all(
+                  color: activityColor.withOpacity(0.3),
+                  width: 2,
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: activityColor.withOpacity(0.15),
@@ -1826,7 +1997,7 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                           gradient: LinearGradient(
                             colors: [
                               activityColor.withOpacity(0.2),
-                              activityColor.withOpacity(0.1)
+                              activityColor.withOpacity(0.1),
                             ],
                           ),
                           borderRadius: BorderRadius.circular(10),
@@ -1862,7 +2033,10 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
                         ),
                       ),
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: activityColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20),
@@ -1945,303 +2119,292 @@ class _AdminLocationMonitorPageState extends State<AdminLocationMonitorPage>
   }
 
   Widget _buildMapSection() {
-  if (isLoading) {
-    return Container(
-      color: Colors.white,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(strokeWidth: 3),
-            SizedBox(height: 20),
-            Text(
-              'Loading map data...',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  if (locationHistory.isEmpty || markers.isEmpty) {
-    return Container(
-      color: Colors.white,
-      child: Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
+    if (isLoading) {
+      return Container(
+        color: Colors.white,
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.map_outlined,
-                  size: 64,
-                  color: Colors.grey[400],
-                ),
-              ),
-              SizedBox(height: 24),
+              CircularProgressIndicator(strokeWidth: 3),
+              SizedBox(height: 20),
               Text(
-                'No Map Data Available',
+                'Loading map data...',
                 style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[700],
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Select an employee to view\ntheir journey on the map',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[500],
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  double lat = (locationHistory[0]['latitude'] as num).toDouble();
-  double lng = (locationHistory[0]['longitude'] as num).toDouble();
-
-  return Container(
-    color: Colors.white,
-    child: Column(
-      children: [
-        Container(
-          padding: EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.indigo.shade50, Colors.white],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-            border: Border(bottom: BorderSide(color: Colors.indigo.shade100)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.indigo.shade400, Colors.indigo.shade600],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(Icons.map, color: Colors.white, size: 24),
-              ),
-              SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Journey Map',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.indigo.shade900,
-                      ),
-                    ),
-                    Text(
-                      '${markers.length} locations plotted on map',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.indigo.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isDesktop)
+    if (locationHistory.isEmpty || markers.isEmpty) {
+      return Container(
+        color: Colors.white,
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.indigo.shade200, width: 2),
+                    color: Colors.grey.shade100,
+                    shape: BoxShape.circle,
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  child: Icon(
+                    Icons.map_outlined,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
+                ),
+                SizedBox(height: 24),
+                Text(
+                  'No Map Data Available',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Select an employee to view\ntheir journey on the map',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    double lat = (locationHistory[0]['latitude'] as num).toDouble();
+    double lng = (locationHistory[0]['longitude'] as num).toDouble();
+
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.indigo.shade50, Colors.white],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              border: Border(bottom: BorderSide(color: Colors.indigo.shade100)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.indigo.shade400, Colors.indigo.shade600],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.map, color: Colors.white, size: 24),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.route, size: 16, color: Colors.indigo.shade700),
-                      SizedBox(width: 6),
                       Text(
-                        'Route Tracking',
+                        'Journey Map',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.indigo.shade900,
+                        ),
+                      ),
+                      Text(
+                        '${markers.length} locations plotted on map',
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.bold,
                           color: Colors.indigo.shade700,
                         ),
                       ),
                     ],
                   ),
                 ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: _buildNativeMap(lat, lng),
-        ),
-      ],
-    ),
-  );
-}
-
-Widget _buildNativeMap(double lat, double lng) {
-  return Stack(
-    children: [
-      GoogleMap(
-        onMapCreated: _onMapCreated,
-        initialCameraPosition: CameraPosition(
-          target: LatLng(lat, lng),
-          zoom: 13,
-        ),
-        markers: markers,
-        polylines: polylines,
-        mapType: MapType.normal,
-        myLocationButtonEnabled: true,
-        zoomControlsEnabled: true,
-        compassEnabled: true,
-        mapToolbarEnabled: true,
-        rotateGesturesEnabled: true,
-        scrollGesturesEnabled: true,
-        tiltGesturesEnabled: true,
-        zoomGesturesEnabled: true,
-      ),
-      Positioned(
-        bottom: 16,
-        left: 16,
-        child: _buildMapLegend(),
-      ),
-    ],
-  );
-}
-Widget _buildWebMapPlaceholder() {
-  return Stack(
-    children: [
-      Container(
-        color: Colors.grey[200],
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.map,
-                size: 80,
-                color: Colors.grey[400],
-              ),
-              SizedBox(height: 20),
-              Text(
-                'Map View',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[700],
-                ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Google Maps is not fully supported in web version',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
-              ),
-              SizedBox(height: 30),
-              Container(
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'Location Data Available',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                if (isDesktop)
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.indigo.shade200,
+                        width: 2,
                       ),
                     ),
-                    SizedBox(height: 10),
-                    Text(
-                      'View the Timeline tab for detailed location tracking',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey[600]),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.route,
+                          size: 16,
+                          color: Colors.indigo.shade700,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Route Tracking',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.indigo.shade700,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+              ],
+            ),
           ),
-        ),
+          Expanded(child: _buildNativeMap(lat, lng)),
+        ],
       ),
-      Positioned(
-        bottom: 16,
-        left: 16,
-        child: _buildMapLegend(),
-      ),
-    ],
-  );
-}
+    );
+  }
 
-Widget _buildMapLegend() {
-  return Container(
-    padding: EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.2),
-          blurRadius: 8,
-          offset: Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+  Widget _buildNativeMap(double lat, double lng) {
+    return Stack(
       children: [
-        Text(
-          'Map Legend',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-            color: Colors.grey[800],
+        GoogleMap(
+          onMapCreated: _onMapCreated,
+          initialCameraPosition: CameraPosition(
+            target: LatLng(lat, lng),
+            zoom: 13,
+          ),
+          markers: markers,
+          polylines: polylines,
+          mapType: MapType.normal,
+          myLocationButtonEnabled: true,
+          zoomControlsEnabled: true,
+          compassEnabled: true,
+          mapToolbarEnabled: true,
+          rotateGesturesEnabled: true,
+          scrollGesturesEnabled: true,
+          tiltGesturesEnabled: true,
+          zoomGesturesEnabled: true,
+        ),
+        Positioned(bottom: 16, left: 16, child: _buildMapLegend()),
+      ],
+    );
+  }
+
+  Widget _buildWebMapPlaceholder() {
+    return Stack(
+      children: [
+        Container(
+          color: Colors.grey[200],
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.map, size: 80, color: Colors.grey[400]),
+                SizedBox(height: 20),
+                Text(
+                  'Map View',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Google Maps is not fully supported in web version',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+                SizedBox(height: 30),
+                Container(
+                  padding: EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Location Data Available',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        'View the Timeline tab for detailed location tracking',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        SizedBox(height: 8),
-        _buildLegendItem(Colors.green.shade600, 'Login', Icons.login),
-        _buildLegendItem(Colors.red.shade600, 'Logout', Icons.logout),
-        _buildLegendItem(Colors.orange.shade600, 'Break Start', Icons.coffee),
-        _buildLegendItem(Colors.blue.shade600, 'Break End', Icons.work),
-        _buildLegendItem(Colors.blue.shade700, 'Working', Icons.work_outline),
+        Positioned(bottom: 16, left: 16, child: _buildMapLegend()),
       ],
-    ),
-  );
-}
+    );
+  }
+
+  Widget _buildMapLegend() {
+    return Container(
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Map Legend',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: Colors.grey[800],
+            ),
+          ),
+          SizedBox(height: 8),
+          _buildLegendItem(Colors.green.shade600, 'Login', Icons.login),
+          _buildLegendItem(Colors.red.shade600, 'Logout', Icons.logout),
+          _buildLegendItem(Colors.orange.shade600, 'Break Start', Icons.coffee),
+          _buildLegendItem(Colors.blue.shade600, 'Break End', Icons.work),
+          _buildLegendItem(Colors.blue.shade700, 'Working', Icons.work_outline),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLegendItem(Color color, String label, IconData icon) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 4),

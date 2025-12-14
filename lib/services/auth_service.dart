@@ -27,9 +27,11 @@ class AuthService {
       }
     });
   }
+
   String getCurrentUserId() {
-    return _auth.currentUser!.uid;
+    return _auth.currentUser?.uid ?? '';
   }
+
   // Save user session data
   Future<void> _saveUserSession(User user) async {
     try {

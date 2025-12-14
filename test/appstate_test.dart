@@ -29,6 +29,7 @@ void main() {
         isLoggedIn: true,
         isOnBreak: true,
         shift: '9:30 AM - 6:30 PM',
+        workLocation: 'office',
         loginTime: loginTime,
         breakStartTime: breakStartTime,
         workDuration: const Duration(hours: 2),
@@ -100,6 +101,7 @@ void main() {
       final original = AppState(
         isLoggedIn: true,
         isOnBreak: false,
+        workLocation: 'office',
         shift: '9:30 AM - 6:30 PM',
         loginTime: DateTime(2025, 11, 18, 9, 15),
         breakStartTime: null,
@@ -167,6 +169,7 @@ void main() {
       final state1 = AppState(
         isLoggedIn: true,
         isOnBreak: false,
+        workLocation: 'office',
         shift: '9:30 AM - 6:30 PM',
         loginTime: DateTime(2025, 11, 18, 9, 30),
         userName: 'Test',
@@ -186,6 +189,7 @@ void main() {
       final state2 = AppState(
         isLoggedIn: true,
         isOnBreak: false,
+        workLocation: 'office',
         shift: '9:30 AM - 6:30 PM',
         loginTime: DateTime(2025, 11, 18, 9, 30),
         userName: 'Test',

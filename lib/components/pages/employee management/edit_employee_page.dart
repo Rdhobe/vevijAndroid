@@ -44,11 +44,12 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
   String? _selectedStatus;
   String? _selectedPaymentMode;
   String? _selectedShift;
-
+  String? _selectedWorkLocation;
   // Dropdown options
   final List<String> _titles = ['Mr', 'Mrs', 'Ms'];
   final List<String> _genders = ['Male', 'Female', 'Other'];
-  List<String> _shifts = ['9:30AM to 6:30 PM','9:50AM to 6:50 PM'];
+  List<String> _shifts = ['9:30AM to 6:30 PM','9:50AM to 6:50 PM' ,'1:50PM to 6:50 PM'];
+  List<String> _Worklocation = ['office', 'site',];
   List<String> _designations = [];
   List<String> _departments = [];
   List<String> _branches = [];
@@ -106,7 +107,12 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
       _selectedGender = _genders.contains(widget.employeeData['gender']) 
           ? widget.employeeData['gender'] 
           : null;
-      
+      _selectedShift = _shifts.contains(widget.employeeData['shift']) 
+          ? widget.employeeData['shift'] 
+          : null;
+      _selectedWorkLocation = _Worklocation.contains(widget.employeeData['workLocation'])
+          ? widget.employeeData['workLocation']
+          : null;
       // Work Details
       _selectedBranch = _branches.contains(widget.employeeData['branch']) 
           ? widget.employeeData['branch'] 
@@ -238,6 +244,7 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
     }
   }
 
+
   Future<void> _saveEmployee() async {
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -249,11 +256,39 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
     setState(() {
       _isLoading = true;
     });
+    //  _selectedGrade,_selectedShift,_selectedBranch,_selectedDepartment,_selectedDesignation,_selectedGender ,_selectedStatus if null throw error 
+      if (_selectedGrade == null ||
+          _selectedShift == null ||
+          _selectedBranch == null ||
+          _selectedDepartment == null ||
+          _selectedDesignation == null ||
+          _selectedGender == null ||
+          _selectedStatus == null) {
+        showDialog(context: context, builder: (context) {
+          return AlertDialog(
+            title: const Text('Error'),
+            content: const Text('One or more required fields are missing. Please go back and fill all required fields.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        });
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
 
     try {
       String password = _generatePassword();
       String email = _emailController.text.trim();
-
+      
       // Prepare employee data
       Map<String, dynamic> employeeData = {
         'uid': widget.employeeData['uid'],
@@ -263,6 +298,7 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
         'email': email,
         'grade': _selectedGrade,
         'shift' : _selectedShift,
+        'workLocation': _selectedWorkLocation,
         'branch': _selectedBranch,
         'department': _selectedDepartment,
         'designation': _selectedDesignation,
@@ -526,21 +562,46 @@ class _EditEmployeePageState extends State<EditEmployeePage> {
             validator: (value) => value == null ? 'Gender is required' : null,
           ),
           const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            value: _selectedShift,
-            decoration: const InputDecoration(
-              labelText: 'shifts *',
-              border: OutlineInputBorder(),
-            ),
-            items: _shifts.map((shift) {
-              return DropdownMenuItem(value: shift , child: Text(shift));
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedShift = value;
-              });
-            },
-            validator: (value) => value == null ? 'shift is required' : null,
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedShift,
+                  decoration: const InputDecoration(
+                    labelText: 'shifts *',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _shifts.map((shift) {
+                    return DropdownMenuItem(value: shift , child: Text(shift));
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedShift = value;
+                    });
+                  },
+                  validator: (value) => value == null ? 'shift is required' : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedWorkLocation,
+                  decoration: const InputDecoration(
+                    labelText: 'Work Location *',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _Worklocation.map((location) {
+                    return DropdownMenuItem(value: location , child: Text(location));
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedWorkLocation = value;
+                    });
+                  },
+                  validator: (value) => value == null ? 'Work location is required' : null,
+                ),
+              ),
+            ],
           ),
         ],
       ),

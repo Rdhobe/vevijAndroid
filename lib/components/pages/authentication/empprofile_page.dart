@@ -8,7 +8,7 @@ class EmpProfilePage extends StatefulWidget {
 }
 
 class _EmpProfilePageState extends State<EmpProfilePage> {
-  Future<Map<String, dynamic>> _fetchUserData() async {
+  Future<Employee> _fetchUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       throw Exception("No user logged in");
@@ -19,47 +19,9 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
         .doc(user.uid)
         .get();
 
-    final userData = docSnapshot.data() ?? {};
-    final bankDetails = userData['bankDetails'] as Map<String, dynamic>? ?? {};
-
-    return {
-      'empName': userData['empName'] ?? 'Unknown',
-      'empCode': userData['empCode'] ?? 'N/A',
-      'email': userData['email'] ?? 'No email',
-      'title': userData['title'] ?? '',
-      'gender': userData['gender'] ?? 'Not specified',
-      'birthDate': userData['birthDate'] ?? 'Not specified',
-      'designation': userData['designation'] ?? 'Unknown',
-      'department': userData['department'] ?? 'Unknown',
-      'branch': userData['branch'] ?? 'Unknown',
-      'grade': userData['grade'] ?? 'Unknown',
-      'status': userData['status'] ?? 'Unknown',
-      'joinDate': userData['joinDate'] ?? 'Unknown',
-      'probationDate': userData['probationDate'] ?? 'Unknown',
-      'lastWorkingDate': userData['lastWorkingDate'] ?? 'Unknown',
-      'lastIncrementDate': userData['lastIncrementDate'] ?? 'Unknown',
-      'resignOfferDate': userData['resignOfferDate'] ?? 'Unknown',
-      'serviceMonth': userData['serviceMonth'] ?? '0',
-      'paymentMode': userData['paymentMode'] ?? 'Unknown',
-      'aadharNumber': userData['aadharNumber'] ?? 'Not provided',
-      'panNumber': userData['panNumber'] ?? 'Not provided',
-      'bankAccountNumber': bankDetails['accountNumber'] ?? 'Not provided',
-      'bankName': bankDetails['bankName'] ?? 'Not provided',
-      'bankBranch': bankDetails['branch'] ?? 'Not provided',
-      'ifscCode': bankDetails['ifscCode'] ?? 'Not provided',
-      'createdAt': userData['createdAt'] != null
-          ? (userData['createdAt'] as Timestamp).toDate().toString().split(
-              ' ',
-            )[0]
-          : 'Unknown',
-      'lastTokenUpdate': userData['lastTokenUpdate'] != null
-          ? (userData['lastTokenUpdate'] as Timestamp)
-                .toDate()
-                .toString()
-                .split(' ')[0]
-          : 'Unknown',
-      'uid': userData['uid'] ?? user.uid,
-    };
+    final Employee userData = Employee.fromMap(docSnapshot.data()!);
+    final bankDetails = userData.bankDetails.toMap();
+    return userData;
   }
 
   Widget _buildInfoCard(
@@ -127,7 +89,7 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
         automaticallyImplyLeading: false,
         title: const Text("Employee Profile"),
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
+      body: FutureBuilder<Employee>(
         future: _fetchUserData(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -136,7 +98,7 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
             return Center(child: Text("Error: ${snapshot.error}"));
           }
 
-          final data = snapshot.data!;
+          final data = snapshot.data! ;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20.0),
@@ -151,7 +113,7 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  "${data['title']} ${data['empName']}",
+                  "${data.title} ${data.empName}",
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -159,7 +121,7 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Employee Code: ${data['empCode']}",
+                  "Employee Code: ${data.empCode}",
                   style: const TextStyle(
                     fontSize: 16,
                     color: Colors.grey,
@@ -168,18 +130,18 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
                 ),
                 const SizedBox(height: 8),
                 Chip(
-                  label: Text(data['designation']),
+                  label: Text(data.designation),
                   backgroundColor: Colors.deepPurple.shade100,
                   labelStyle: const TextStyle(color: Colors.deepPurple),
                 ),
                 const SizedBox(height: 4),
                 Chip(
-                  label: Text(data['status']),
-                  backgroundColor: data['status'] == 'Active'
+                  label: Text(data.status),
+                  backgroundColor: data.status == 'Active'
                       ? Colors.green.shade100
                       : Colors.red.shade100,
                   labelStyle: TextStyle(
-                    color: data['status'] == 'Active'
+                    color: data.status == 'Active'
                         ? Colors.green.shade700
                         : Colors.red.shade700,
                   ),
@@ -189,31 +151,31 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
                 _buildSectionHeader("Personal Information"),
                 _buildInfoCard(
                   "Email",
-                  data['email'],
+                  data.email,
                   Icons.email,
                   Colors.deepPurple,
                 ),
                 _buildInfoCard(
                   "Gender",
-                  data['gender'],
+                  data.gender,
                   Icons.person,
                   Colors.blue,
                 ),
                 _buildInfoCard(
                   "Birth Date",
-                  data['birthDate'],
+                  data.birthDate,
                   Icons.cake,
                   Colors.pink,
                 ),
                 _buildInfoCard(
                   "Aadhar Number",
-                  data['aadharNumber'],
+                  data.aadharNumber,
                   Icons.credit_card,
                   Colors.orange,
                 ),
                 _buildInfoCard(
                   "PAN Number",
-                  data['panNumber'],
+                  data.panNumber,
                   Icons.account_box,
                   Colors.indigo,
                 ),
@@ -222,37 +184,49 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
                 _buildSectionHeader("Employment Information"),
                 _buildInfoCard(
                   "Department",
-                  data['department'],
+                  data.department,
                   Icons.business,
                   Colors.green,
                 ),
                 _buildInfoCard(
+                  "shift",
+                  data.shift,
+                  Icons.punch_clock,
+                  Colors.green,
+                ),
+                _buildInfoCard(
+                  "work location",
+                  data.workLocation,
+                  Icons.work,
+                  Colors.blue,
+                ),
+                _buildInfoCard(
                   "Branch",
-                  data['branch'],
+                  data.branch,
                   Icons.location_city,
                   Colors.red,
                 ),
                 _buildInfoCard(
                   "Grade",
-                  data['grade'],
+                  data.grade,
                   Icons.stars,
                   Colors.amber,
                 ),
                 _buildInfoCard(
                   "Join Date",
-                  data['joinDate'],
+                  data.joinDate,
                   Icons.calendar_today,
                   Colors.purple,
                 ),
                 _buildInfoCard(
                   "Service Months",
-                  data['serviceMonth'],
+                  data.serviceMonth,
                   Icons.access_time,
                   Colors.teal,
                 ),
                 _buildInfoCard(
                   "Payment Mode",
-                  data['paymentMode'],
+                  data.paymentMode,
                   Icons.payment,
                   Colors.brown,
                 ),
@@ -261,25 +235,25 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
                 _buildSectionHeader("Important Dates"),
                 _buildInfoCard(
                   "Probation Date",
-                  data['probationDate'],
+                  data.probationDate,
                   Icons.event,
                   Colors.cyan,
                 ),
                 _buildInfoCard(
                   "Last Increment Date",
-                  data['lastIncrementDate'],
+                  data.lastIncrementDate,
                   Icons.trending_up,
                   Colors.green,
                 ),
                 _buildInfoCard(
                   "Last Working Date",
-                  data['lastWorkingDate'],
+                  data.lastWorkingDate,
                   Icons.work_off,
                   Colors.grey,
                 ),
                 _buildInfoCard(
                   "Resign Offer Date",
-                  data['resignOfferDate'],
+                  data.resignOfferDate,
                   Icons.exit_to_app,
                   Colors.red,
                 ),
@@ -288,25 +262,25 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
                 _buildSectionHeader("Bank Details"),
                 _buildInfoCard(
                   "Bank Name",
-                  data['bankName'],
+                  data.bankDetails.bankName,
                   Icons.account_balance,
                   Colors.deepPurple,
                 ),
                 _buildInfoCard(
                   "Account Number",
-                  data['bankAccountNumber'],
+                  data.bankDetails.accountNumber,
                   Icons.account_balance_wallet,
                   Colors.green,
                 ),
                 _buildInfoCard(
                   "Bank Branch",
-                  data['bankBranch'],
+                  data.bankDetails.branch,
                   Icons.location_on,
                   Colors.red,
                 ),
                 _buildInfoCard(
                   "IFSC Code",
-                  data['ifscCode'],
+                  data.bankDetails.ifscCode,
                   Icons.code,
                   Colors.blue,
                 ),
@@ -315,15 +289,9 @@ class _EmpProfilePageState extends State<EmpProfilePage> {
                 _buildSectionHeader("System Information"),
                 _buildInfoCard(
                   "Account Created",
-                  data['createdAt'],
+                  data.createdAt.toString(),
                   Icons.date_range,
                   Colors.purple,
-                ),
-                _buildInfoCard(
-                  "Last Token Update",
-                  data['lastTokenUpdate'],
-                  Icons.update,
-                  Colors.indigo,
                 ),
 
                 const SizedBox(height: 20),

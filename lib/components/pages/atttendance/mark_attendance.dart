@@ -22,7 +22,7 @@ class MarkAttendancePage extends StatefulWidget {
   @override
   State<MarkAttendancePage> createState() => _MarkAttendancePageState();
 }
-@pragma('vm:entry-point')
+
 class _MarkAttendancePageState extends State<MarkAttendancePage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   // State Management
@@ -32,7 +32,6 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
   // Controllers and Timers
   Timer? _timer;
   Timer? _syncTimer;
-  Timer? _locationTimer;
   Timer? _saveStateDebounceTimer;
   late AnimationController _pulseController;
   late AnimationController _slideController;
@@ -45,7 +44,6 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
 
   // Location
   Position? _currentPosition;
-  Position? _lastStoredPosition;
   bool _locationEnabled = false;
   bool _isGettingLocation = false;
 
@@ -67,57 +65,40 @@ class _MarkAttendancePageState extends State<MarkAttendancePage>
   final Duration _snackDebounce = const Duration(seconds: 4);
 
   // Performance optimization
-  DateTime _lastLocationUpdate = DateTime.now();
-  DateTime _lastLocationStore = DateTime.now();
   DateTime _lastNotificationUpdate = DateTime.now();
-  static const Duration _locationUpdateInterval = Duration(seconds: 10);
-  static const Duration _locationStoreInterval = Duration(seconds: 30);
   static const Duration _notificationUpdateInterval = Duration(seconds: 10);
   static const Duration _syncInterval = Duration(seconds: 60);
 
   // Timer debugging
   int _timerTickCount = 0;
   DateTime? _lastTimerTick;
-  
+
   // Office geofence settings
-  // static const double officeLat = 18.50954783069657;
-  // static const double officeLng = 73.87062867788329;
-  static const double officeLat = 18.50568422219611; // testing 
-  static const double officeLng = 73.8336470358418; // testing
-  static const double allowedRadiusMeters = 150;  // You can set 50–300 meters
+  static const double officeLat = 18.50954783069657;
+  static const double officeLng = 73.87062867788329;
+  static const double allowedRadiusMeters = 150; // You can set 50–300 meters
   @override
-void initState() {
-  super.initState();
-  WidgetsBinding.instance.addObserver(this);
-
-  _pulseController = AnimationController(
-    duration: Duration(seconds: 2), vsync: this);
-  _slideController = AnimationController(
-    duration: Duration(milliseconds: 500), vsync: this);
-
-  _pulseAnimation = Tween<double>(begin:1, end:1.1).animate(
-    CurvedAnimation(parent:_pulseController, curve:Curves.easeInOut));
-
-  _slideAnimation = Tween<Offset>(begin:Offset(0,-1), end:Offset.zero).animate(
-    CurvedAnimation(parent:_slideController, curve:Curves.elasticOut));
-
-  _initializeApp();
-  _fetchLocation();
-}
-  Future<void> _fetchLocation() async {
-  try {
-    final pos = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: const Duration(seconds: 10),
-    );
-
-    setState(() {
-      _currentPosition = pos;
-    });
-  } catch (e) {
-    print("Location error: $e");
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeApp();
+    _fetchLocation();
   }
-}
+
+  Future<void> _fetchLocation() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      setState(() {
+        _currentPosition = pos;
+      });
+    } catch (e) {
+      print("Location error: $e");
+    }
+  }
 
   Future<void> _initializeApp() async {
     if (_isDisposed) return;
@@ -127,7 +108,7 @@ void initState() {
       _state = await _stateService.loadAppState();
 
       // Initialize animations
-      // _initializeAnimations();
+      _initializeAnimations();
 
       // Initialize services in sequence
       await _initializeNotifications();
@@ -147,7 +128,6 @@ void initState() {
           _state.loginTime != null &&
           !_state.isWaitingForApproval) {
         _startTimer();
-        _startLocationTracking();
         _updateNotification();
       }
 
@@ -251,32 +231,23 @@ void initState() {
   }
 
   void _startPeriodicSync() {
-    try {
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(_syncInterval, (timer) async {
       if (!_isDisposed && !_isSyncing && _state.isLoggedIn) {
         await _syncWithFirestore();
       }
     });
-    }catch(e){
-      print(e);
-    }
   }
 
   void _startPeriodicStateSave() {
-    try {
     Timer.periodic(const Duration(minutes: 5), (timer) {
       if (!_isDisposed) {
         _stateService.saveAppState(_state);
       }
     });
-    }catch(e){
-      print(e);
-    }
   }
 
   void _setupUserDataListener(String userId) {
-    if (_isDisposed) return;
     _userDataListener?.cancel();
     _userDataListener = FirebaseFirestore.instance
         .collection('users')
@@ -373,6 +344,7 @@ void initState() {
   Future<void> _recoverApprovalState() async {
     try {
       final approvalState = await _stateService.loadApprovalState();
+
       if (approvalState['isWaitingForApproval'] == true &&
           approvalState['pendingApprovalId'] != null) {
         final approvalId = approvalState['pendingApprovalId']!;
@@ -507,7 +479,7 @@ void initState() {
             '$dateStr\n🟠 On Break: ${_formatDuration(currentBreakDuration)}\n⏰ Work: ${_formatDuration(_state.workDuration)}';
       } else {
         body =
-            '$dateStr\n🔵 Working: ${_formatDuration(_state.workDuration)}\n☕ Break: ${_formatDuration(_state.totalBreakDurationToday)}\n📍 Distance: ${_state.totalDistanceTraveled.toStringAsFixed(2)} km';
+            '$dateStr\n🔵 Working: ${_formatDuration(_state.workDuration)}\n☕ Break: ${_formatDuration(_state.totalBreakDurationToday)}';
       }
 
       const AndroidNotificationDetails androidDetails =
@@ -603,7 +575,7 @@ void initState() {
   static bool _onIosBackground(ServiceInstance service) {
     return true;
   }
-  @pragma('vm:entry-point')
+
   static Future<void> _onStart(ServiceInstance service) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
@@ -676,7 +648,7 @@ void initState() {
       });
     });
   }
-  @pragma('vm:entry-point')
+
   static String _formatDurationStatic(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, "0");
     final String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
@@ -684,34 +656,34 @@ void initState() {
     return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
   }
 
-  // void _initializeAnimations() {
-  //  try { _pulseController = AnimationController(
-  //     duration: const Duration(seconds: 2),
-  //     vsync: this,
-  //   );
+  void _initializeAnimations() {
+    _pulseController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
 
-  //   _slideController = AnimationController(
-  //     duration: const Duration(milliseconds: 500),
-  //     vsync: this,
-  //   );
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
 
-  //   _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-  //     CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-  //   );
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
 
-  //   _slideAnimation =
-  //       Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(
-  //         CurvedAnimation(parent: _slideController, curve: Curves.elasticOut),
-  //       );
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(
+          CurvedAnimation(parent: _slideController, curve: Curves.elasticOut),
+        );
 
-  //   if (!_state.isLoggedIn) {
-  //     _pulseController.repeat(reverse: true);
-  //   }
-  //   _slideController.forward();
-  //   }catch(e){
-  //     print(e);
-  //   }
-  // }
+    if (!_state.isLoggedIn) {
+      _pulseController.repeat(reverse: true);
+    }
+    _slideController.forward();
+  }
+
+  // ... [Keep all your existing service initialization methods exactly as they are]
+  // _initializeNotifications, _initializeBackgroundService, _initializeUserData, etc.
 
   // FIXED TIMER IMPLEMENTATION
   void _startTimer() {
@@ -814,33 +786,9 @@ void initState() {
     _timer = null;
   }
 
-  // ENHANCED LOCATION TRACKING
-  void _startLocationTracking() {
-    if (_isDisposed || !_state.isLoggedIn) return;
-
-    _locationTimer?.cancel();
-    _locationTimer = Timer.periodic(_locationUpdateInterval, (timer) async {
-      if (!_state.isLoggedIn || _isDisposed) {
-        timer.cancel();
-        return;
-      }
-      try {
-        await _getCurrentLocation();
-      } catch (e) {
-        _logError('Error in location timer', e, null);
-      }
-    });
-    _getCurrentLocation(); // Get initial location immediately
-  }
-
+  // SIMPLIFIED LOCATION - Only on login/logout
   Future<void> _getCurrentLocation() async {
     if (_isDisposed || _isGettingLocation) return;
-
-    // Throttle location updates
-    if (DateTime.now().difference(_lastLocationUpdate) <
-        _locationUpdateInterval) {
-      return;
-    }
 
     _isGettingLocation = true;
 
@@ -860,14 +808,6 @@ void initState() {
             '${_currentPosition!.latitude.toStringAsFixed(6)}, ${_currentPosition!.longitude.toStringAsFixed(6)}';
 
         _updateState(_state.copyWith(currentCoordinates: newCoordinates));
-
-        if (_state.isLoggedIn && _state.userId.isNotEmpty) {
-          await _updateRealTimeLocation();
-          String activityType = _state.isOnBreak ? 'on_break' : 'working';
-          await _storeLocationInHistory(activityType);
-        }
-
-        _lastLocationUpdate = DateTime.now();
       }
     } on TimeoutException {
       _updateState(_state.copyWith(currentCoordinates: 'Location timeout'));
@@ -876,107 +816,6 @@ void initState() {
       _updateState(_state.copyWith(currentCoordinates: 'Location unavailable'));
     } finally {
       _isGettingLocation = false;
-    }
-  }
-
-  Future<void> _storeLocationInHistory(String activityType) async {
-    // Rate limiting for Firestore writes - store every 30 seconds only
-    if (DateTime.now().difference(_lastLocationStore) <
-        _locationStoreInterval) {
-      return;
-    }
-
-    if (_isDisposed ||
-        !_state.isLoggedIn ||
-        _state.currentCoordinates.isEmpty ||
-        _state.todayAttendanceId == null) {
-      return;
-    }
-
-    try {
-      double distanceMoved = 0.0;
-      if (_lastStoredPosition != null && _currentPosition != null) {
-        distanceMoved = _calculateDistance(
-          _lastStoredPosition!,
-          _currentPosition!,
-        );
-
-        if (distanceMoved > 10) {
-          // Only count significant movements (>10 meters)
-          _updateState(
-            _state.copyWith(
-              totalDistanceTraveled:
-                  _state.totalDistanceTraveled + (distanceMoved / 1000),
-            ),
-          );
-        }
-      }
-
-      await FirebaseFirestore.instance
-          .collection('attendance')
-          .doc(_state.todayAttendanceId)
-          .collection('locationHistory')
-          .add({
-            'timestamp': FieldValue.serverTimestamp(),
-            'coordinates': _state.currentCoordinates,
-            'latitude': _currentPosition?.latitude,
-            'longitude': _currentPosition?.longitude,
-            'accuracy': _currentPosition?.accuracy,
-            'activityType': activityType,
-            'status': _state.isOnBreak ? 'on_break' : 'working',
-            'distanceFromLast': distanceMoved / 1000,
-            'totalDistance': _state.totalDistanceTraveled,
-            'userName': _state.userName,
-            'userId': _state.userId,
-          });
-
-      await FirebaseFirestore.instance
-          .collection('attendance')
-          .doc(_state.todayAttendanceId)
-          .update({
-            'totalDistanceTraveled': _state.totalDistanceTraveled,
-            'lastLocationUpdate': FieldValue.serverTimestamp(),
-          });
-
-      _lastStoredPosition = _currentPosition;
-      _lastLocationStore = DateTime.now(); // Update last store time
-    } catch (e, stackTrace) {
-      _logError('Error storing location history', e, stackTrace);
-    }
-  }
-
-  double _calculateDistance(Position start, Position end) {
-    return Geolocator.distanceBetween(
-      start.latitude,
-      start.longitude,
-      end.latitude,
-      end.longitude,
-    );
-  }
-
-  Future<void> _updateRealTimeLocation() async {
-    if (_isDisposed || !_state.isLoggedIn || _state.currentCoordinates.isEmpty)
-      return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_state.userId)
-          .update({
-            'currentLocation': _state.currentCoordinates,
-            'lastLocationUpdate': FieldValue.serverTimestamp(),
-            'isCurrentlyWorking': _state.isLoggedIn,
-            'isOnBreak': _state.isOnBreak,
-            'workStatus': _state.isOnBreak ? 'On Break' : 'Working',
-            'todayLoginTime': _state.loginTime?.toIso8601String(),
-            'currentWorkDuration': _formatDuration(_state.workDuration),
-            'currentBreakDuration': _formatDuration(
-              _state.totalBreakDurationToday,
-            ),
-            'totalDistanceTraveled': _state.totalDistanceTraveled,
-          });
-    } catch (e, stackTrace) {
-      _logError('Error updating real-time location', e, stackTrace);
     }
   }
 
@@ -1017,10 +856,8 @@ void initState() {
 
     await _createTodayAttendanceRecord();
     await _updateAttendanceOnLogin();
-    await _storeLocationInHistory('login');
 
     // CRITICAL: Start timers and services AFTER state is fully updated
-    _startLocationTracking();
     _startTimer();
     await _updateNotification();
     await _startBackgroundService();
@@ -1156,11 +993,9 @@ void initState() {
     if (_isDisposed) return;
 
     await _getCurrentLocation();
-    await _storeLocationInHistory('logout');
 
     // Stop services FIRST
     _stopTimer();
-    _stopLocationTracking();
     await _stopBackgroundService();
 
     // Then update attendance
@@ -1176,15 +1011,8 @@ void initState() {
         empId: _state.empId,
       ),
     );
-if (mounted && !_isDisposed) {
-  try {
-    if (!_pulseController.isAnimating) {
-      _pulseController.repeat(reverse: true);
-    }
-  } catch (e) {
-    if (kDebugMode) print('⚠️ AnimationController reuse skipped: $e');
-  }
-}
+
+    _pulseController.repeat(reverse: true);
 
     // Clear background-service prefs on logout
     try {
@@ -1285,25 +1113,6 @@ if (mounted && !_isDisposed) {
     return const Duration(hours: 9);
   }
 
-  void _stopLocationTracking() {
-    _locationTimer?.cancel();
-    _locationTimer = null;
-
-    if (_state.userId.isNotEmpty) {
-      FirebaseFirestore.instance
-          .collection('users')
-          .doc(_state.userId)
-          .update({
-            'isCurrentlyWorking': false,
-            'workStatus': 'Offline',
-            'lastLocationUpdate': FieldValue.serverTimestamp(),
-          })
-          .catchError(
-            (e) => _logError('Error updating offline status', e, null),
-          );
-    }
-  }
-
   // ENHANCED BREAK MANAGEMENT
   Future<void> _startBreak() async {
     if (_isDisposed) return;
@@ -1341,8 +1150,6 @@ if (mounted && !_isDisposed) {
             'updatedAt': FieldValue.serverTimestamp(),
           });
     }
-
-    await _storeLocationInHistory('break_start');
 
     _safeShowSnackBar(
       'Break started ☕',
@@ -1399,8 +1206,6 @@ if (mounted && !_isDisposed) {
           });
     }
 
-    await _storeLocationInHistory('break_end');
-
     _safeShowSnackBar(
       'Break ended - Duration: ${_formatDuration(currentBreakDuration)}',
       backgroundColor: Colors.blue,
@@ -1443,10 +1248,10 @@ if (mounted && !_isDisposed) {
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-      if (!kIsWeb && _state.isLoggedIn) {
-    _startBackgroundService();
-  }
-  break;
+        if (!kIsWeb && _state.isLoggedIn) {
+          _startBackgroundService();
+        }
+        break;
       case AppLifecycleState.resumed:
         _syncWithFirestore();
         _stopBackgroundService();
@@ -1473,7 +1278,6 @@ if (mounted && !_isDisposed) {
     _saveStateDebounceTimer?.cancel();
     _timer?.cancel();
     _syncTimer?.cancel();
-    _locationTimer?.cancel();
 
     // Cancel all subscriptions
     _approvalListener?.cancel();
@@ -1496,7 +1300,6 @@ if (mounted && !_isDisposed) {
 
   void _stopAllServices() {
     _stopTimer();
-    _stopLocationTracking();
     _stopBackgroundService();
     _notificationsPlugin.cancel(1);
   }
@@ -1625,7 +1428,6 @@ if (mounted && !_isDisposed) {
       );
 
       _startTimer();
-      _startLocationTracking();
       await _updateNotification();
 
       _safeShowSnackBar(
@@ -2215,100 +2017,92 @@ if (mounted && !_isDisposed) {
       durationSeconds: 6,
     );
   }
-  Widget _buildGeoInfo() {
-  // If no GPS fix yet → fetch once + show loading text
-  if (_currentPosition == null) {
-    _fetchLocation(); // safe: triggers only once
 
-    return const Center(
-      child: Text(
-        "Fetching location...",
-        style: TextStyle(fontSize: 14),
+  Widget _buildGeoInfo() {
+    // Safe unpack of current position
+    final currentPos = _currentPosition;
+
+    if (currentPos == null) {
+      _fetchLocation(); // safe: triggers only once
+      return const Center(
+        child: Text("Fetching location...", style: TextStyle(fontSize: 14)),
+      );
+    }
+
+    // Use the local safe variable
+    final userLocation = LatLng(currentPos.latitude, currentPos.longitude);
+
+    // Office location
+    final officeLocation = LatLng(officeLat, officeLng);
+
+    // Calculate distance
+    double distance = Geolocator.distanceBetween(
+      userLocation.latitude,
+      userLocation.longitude,
+      officeLocation.latitude,
+      officeLocation.longitude,
+    );
+
+    return SizedBox(
+      height: 300,
+      child: GoogleMap(
+        initialCameraPosition: CameraPosition(target: userLocation, zoom: 16),
+
+        // 🔹 Markers
+        markers: {
+          Marker(
+            markerId: const MarkerId("user"),
+            position: userLocation,
+            infoWindow: InfoWindow(
+              title: "You",
+              snippet: "Distance: ${distance.toStringAsFixed(1)} m",
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueAzure,
+            ),
+          ),
+          Marker(
+            markerId: const MarkerId("office"),
+            position: officeLocation,
+            infoWindow: const InfoWindow(
+              title: "Office",
+              snippet: "Allowed login zone",
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueRed,
+            ),
+          ),
+        },
+
+        // 🔹 Line between user and office
+        polylines: {
+          Polyline(
+            polylineId: const PolylineId("distance_line"),
+            width: 4,
+            points: [userLocation, officeLocation],
+            color: distance <= allowedRadiusMeters ? Colors.green : Colors.red,
+          ),
+        },
+
+        // 🔹 Geofence Circle around office
+        circles: {
+          Circle(
+            circleId: const CircleId("office_radius"),
+            center: officeLocation,
+            radius: allowedRadiusMeters, // <-- REQUIRED
+            fillColor: Colors.blue.withOpacity(0.2),
+            strokeColor: Colors.blue,
+            strokeWidth: 2,
+          ),
+        },
+
+        myLocationButtonEnabled: true,
+        myLocationEnabled: _locationEnabled,
+        zoomControlsEnabled: true,
       ),
     );
   }
 
-  // User location
-  final userLocation = LatLng(
-    _currentPosition!.latitude,
-    _currentPosition!.longitude,
-  );
-
-  // Office location
-  final officeLocation = LatLng(officeLat, officeLng);
-
-  // Calculate distance
-  double distance = Geolocator.distanceBetween(
-    userLocation.latitude,
-    userLocation.longitude,
-    officeLocation.latitude,
-    officeLocation.longitude,
-  );
-
-  return SizedBox(
-    height: 300,
-    child: GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: userLocation,
-        zoom: 16,
-      ),
-
-      // 🔹 Markers
-      markers: {
-        Marker(
-          markerId: const MarkerId("user"),
-          position: userLocation,
-          infoWindow: InfoWindow(
-            title: "You",
-            snippet: "Distance: ${distance.toStringAsFixed(1)} m",
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueAzure,
-          ),
-        ),
-        Marker(
-          markerId: const MarkerId("office"),
-          position: officeLocation,
-          infoWindow: const InfoWindow(
-            title: "Office",
-            snippet: "Allowed login zone",
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueRed,
-          ),
-        ),
-      },
-
-      // 🔹 Line between user and office
-      polylines: {
-        Polyline(
-          polylineId: const PolylineId("distance_line"),
-          width: 4,
-          points: [userLocation, officeLocation],
-          color: distance <= allowedRadiusMeters
-              ? Colors.green
-              : Colors.red,
-        ),
-      },
-
-      // 🔹 Geofence Circle around office
-      circles: {
-        Circle(
-          circleId: const CircleId("office_radius"),
-          center: officeLocation,
-          radius: allowedRadiusMeters,    // <-- REQUIRED
-          fillColor: Colors.blue.withOpacity(0.2),
-          strokeColor: Colors.blue,
-          strokeWidth: 2,
-        ),
-      },
-
-      myLocationButtonEnabled: true,
-      myLocationEnabled: _locationEnabled,
-      zoomControlsEnabled: true,
-    ),
-  );
-}
   Widget _buildAttendanceCircle() {
     if (_isLoading) return _buildLoadingWidget();
     if (_state.isWaitingForApproval) return _buildApprovalWaitingWidget();
@@ -2543,114 +2337,136 @@ if (mounted && !_isDisposed) {
   //   }
   // }
   bool _isInsideOffice(double lat, double lng) {
-  double distance = Geolocator.distanceBetween(
-    lat, 
-    lng, 
-    officeLat, 
-    officeLng,
-  );
-
-  return distance <= allowedRadiusMeters;
-}
-Future<void> _login() async {
-  if (_isDisposed) return;
-  if (mounted && !_isDisposed){
-  _pulseController.stop();
-  }
-  await _getCurrentLocation();
-
-  // ---------- BASIC VALIDATIONS ----------
-  if (_currentPosition == null) {
-    _safeShowSnackBar(
-      'Unable to detect location. Please enable GPS.',
-      backgroundColor: Colors.red,
-      icon: Icons.location_off,
-    );
-    return;
-  }
-
-  if (_state.workLocation == null || _state.workLocation!.isEmpty) {
-    _safeShowSnackBar(
-      'Work location is not set. Contact Administrator.',
-      backgroundColor: Colors.red,
-      icon: Icons.error_outline,
-    );
-    return;
-  }
-
-  final workLoc = _state.workLocation!.toLowerCase().trim();
-
-  // ---------- WORK LOCATION LOGIC ----------
-  if (workLoc == 'office') {
-    // Employee MUST be inside office geofence
-    bool inside = _isInsideOffice(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
+    double distance = Geolocator.distanceBetween(
+      lat,
+      lng,
+      officeLat,
+      officeLng,
     );
 
-    if (!inside) {
+    return distance <= allowedRadiusMeters;
+  }
+
+  Future<void> _login() async {
+    if (_isDisposed) return;
+
+    _pulseController.stop();
+    await _getCurrentLocation();
+
+    // ---------- BASIC VALIDATIONS ----------
+    if (_currentPosition == null) {
+      // await _stateService.setLoading(false); // Removed undefined method
+
       _safeShowSnackBar(
-        '❌ You must be at the office to login.\n'
-        'Login blocked due to location restriction.',
+        'Unable to detect location. Please:\n1. Enable GPS\n2. Grant location permission\n3. Ensure you have network connectivity',
         backgroundColor: Colors.red,
-        icon: Icons.my_location,
-        durationSeconds: 5,
+        icon: Icons.location_off,
+        durationSeconds: 6,
+      );
+      _pulseController.repeat(reverse: true);
+      return;
+    }
+
+    // Safety checks for work location
+    final workLocationStr = _state.workLocation;
+    if (workLocationStr == null || workLocationStr.isEmpty) {
+      // await _stateService.setLoading(false); // Removed undefined method
+
+      _safeShowSnackBar(
+        'Work location is not set for your profile. Please contact HR or Admin.',
+        backgroundColor: Colors.red,
+        icon: Icons.error_outline,
+      );
+      _pulseController.repeat(reverse: true);
+      return;
+    }
+
+    final workLoc = workLocationStr.toLowerCase().trim();
+
+    // Field staff logic - no geofence needed
+    if (workLoc == 'field') {
+      bool needsApproval = _needsLoginApproval();
+      if (needsApproval) {
+        await _requestLoginApproval();
+      } else {
+        await _completeLogin();
+        await _stateService.clearApprovalState();
+      }
+      return;
+    }
+
+    // Office logic - strictly enforce geofence
+    if (workLoc == 'office') {
+      // We already checked _currentPosition is not null above
+      final pos = _currentPosition!;
+      bool inside = _isInsideOffice(pos.latitude, pos.longitude);
+
+      if (!inside) {
+        _safeShowSnackBar(
+          '❌ You must be at the office to login.\n'
+          'Login blocked due to location restriction.',
+          backgroundColor: Colors.red,
+          icon: Icons.my_location,
+          durationSeconds: 5,
+        );
+        return;
+      }
+    } else if (workLoc == 'site') {
+      // SITE employees can login anywhere → NO location restriction
+      // Only save their current login location (already handled later)
+      print("📍 SITE employee → skipping geofence check");
+    } else {
+      // Unknown location type
+      _safeShowSnackBar(
+        'Invalid work location "${_state.workLocation}". Contact Administrator.',
+        backgroundColor: Colors.red,
+        icon: Icons.warning_amber,
       );
       return;
     }
-  }
-  else if (workLoc == 'site') {
-    // SITE employees can login anywhere → NO location restriction
-    // Only save their current login location (already handled later)
-    print("📍 SITE employee → skipping geofence check");
-  }
-  else {
-    // Unknown location type
-    _safeShowSnackBar(
-      'Invalid work location "${_state.workLocation}". Contact Administrator.',
-      backgroundColor: Colors.red,
-      icon: Icons.warning_amber,
-    );
-    return;
-  }
 
-  // ---------- NORMAL LOGIN PROCESS ----------
-  final now = DateTime.now();
-  final needsApproval = _needsLoginApproval();
+    // ---------- NORMAL LOGIN PROCESS ----------
+    final now = DateTime.now();
+    final needsApproval = _needsLoginApproval();
 
-  if (needsApproval) {
-    final approvalId = await _requestLoginApproval();
-    if (approvalId != null) {
-      await _stateService.saveApprovalState(
-        isWaitingForApproval: true,
-        pendingApprovalId: approvalId,
-        approvalRequestTime: now,
-      );
+    if (needsApproval) {
+      final approvalId = await _requestLoginApproval();
+      if (approvalId != null) {
+        await _stateService.saveApprovalState(
+          isWaitingForApproval: true,
+          pendingApprovalId: approvalId,
+          approvalRequestTime: now,
+        );
 
-      _updateState(_state.copyWith(
-        isWaitingForApproval: true,
-        loginTime: now,
-        pendingApprovalId: approvalId,
-        approvalRequestTime: now,
-        approvalRetryCount: 0,
-      ));
+        _updateState(
+          _state.copyWith(
+            isWaitingForApproval: true,
+            loginTime: now,
+            pendingApprovalId: approvalId,
+            approvalRequestTime: now,
+            approvalRetryCount: 0,
+          ),
+        );
 
-      _listenForApproval(approvalId);
+        _listenForApproval(approvalId);
 
-      _safeShowSnackBar(
-        '⏳ Waiting for approval...',
-        backgroundColor: Colors.orange,
-        icon: Icons.access_time,
-      );
+        _safeShowSnackBar(
+          '⏳ Waiting for approval...',
+          backgroundColor: Colors.orange,
+          icon: Icons.access_time,
+        );
+      } else {
+        _updateState(
+          _state.copyWith(isWaitingForApproval: false, loginTime: null),
+        );
+        await _stateService.clearApprovalState();
+      }
     } else {
-      _updateState(_state.copyWith(isWaitingForApproval: false, loginTime: null));
+      await _completeLogin();
       await _stateService.clearApprovalState();
     }
-  } else {
-    await _completeLogin();
-    await _stateService.clearApprovalState();
   }
-}
+
   Future<String?> _requestLoginApproval() async {
     if (_isDisposed) return null;
 
@@ -2879,11 +2695,6 @@ Future<void> _login() async {
                     Icons.coffee,
                     'Break Time',
                     _formatDuration(_state.totalBreakDurationToday),
-                  ),
-                  _buildInfoItem(
-                    Icons.route,
-                    'Distance',
-                    '${_state.totalDistanceTraveled.toStringAsFixed(1)} km',
                   ),
                 ],
               ),
@@ -3280,6 +3091,11 @@ Future<void> _login() async {
 
   DateTime _getShiftEndTime() {
     DateTime now = DateTime.now();
+    // Saturday early logout at 4 PM
+    if (now.weekday == DateTime.saturday) {
+      return DateTime(now.year, now.month, now.day, 16, 0); // 4:00 PM
+    }
+    // Regular working days end at 6:30 PM
     return DateTime(now.year, now.month, now.day, 18, 30);
   }
 

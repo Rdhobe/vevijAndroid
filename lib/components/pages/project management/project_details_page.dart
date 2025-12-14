@@ -8157,7 +8157,7 @@ Future<void> _importTasksFromExcel() async {
   }
 
   void _navigateToMultiUpdatePage() async {
-    if (await EmployeePermissionChecker.can(FirebaseAuth.instance.currentUser!.uid, EmployeePermission.addtaskProject)) 
+    if (await EmployeePermissionChecker.can(FirebaseAuth.instance.currentUser!.uid, EmployeePermission.updatetaskProject)) 
         {
     Navigator.push(
       context,

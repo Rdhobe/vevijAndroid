@@ -19,12 +19,42 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-    await Firebase.initializeApp();
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    await NotificationService.initialize();
-    await _initializeFirebaseMessaging();
-  runApp(const MyApp());
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    // Capture framework errors and forward to zone
+    FlutterError.onError = (FlutterErrorDetails details) {
+      Zone.current.handleUncaughtError(details.exception, details.stack ?? StackTrace.current);
+    };
+
+    try {
+      await Firebase.initializeApp();
+    } catch (e) {
+      debugPrint('Firebase initialize failed: $e');
+    }
+
+    try {
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    } catch (e) {
+      debugPrint('Background handler registration failed: $e');
+    }
+
+    try {
+      await NotificationService.initialize();
+    } catch (e) {
+      debugPrint('NotificationService.initialize failed: $e');
+    }
+
+    try {
+      await _initializeFirebaseMessaging();
+    } catch (e) {
+      debugPrint('FirebaseMessaging init failed: $e');
+    }
+
+    runApp(const MyApp());
+  }, (error, stack) {
+    debugPrint('Uncaught zone error: $error');
+  });
 }
 
 Future<void> _initializeFirebaseMessaging() async {

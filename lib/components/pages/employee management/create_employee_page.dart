@@ -24,14 +24,19 @@ class _CreateEmployeePageState extends State<CreateEmployeePage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _birthDateController = TextEditingController();
   final TextEditingController _joinDateController = TextEditingController();
-  final TextEditingController _lastWorkingDateController = TextEditingController();
-  final TextEditingController _resignOfferDateController = TextEditingController();
-  final TextEditingController _lastIncrementDateController = TextEditingController();
-  final TextEditingController _probationDateController = TextEditingController();
+  final TextEditingController _lastWorkingDateController =
+      TextEditingController();
+  final TextEditingController _resignOfferDateController =
+      TextEditingController();
+  final TextEditingController _lastIncrementDateController =
+      TextEditingController();
+  final TextEditingController _probationDateController =
+      TextEditingController();
   final TextEditingController _serviceMonthController = TextEditingController();
   final TextEditingController _ifscCodeController = TextEditingController();
   final TextEditingController _bankNameController = TextEditingController();
-  final TextEditingController _accountNumberController = TextEditingController();
+  final TextEditingController _accountNumberController =
+      TextEditingController();
   final TextEditingController _bankBranchController = TextEditingController();
   final TextEditingController _aadharController = TextEditingController();
   final TextEditingController _panController = TextEditingController();
@@ -46,11 +51,13 @@ class _CreateEmployeePageState extends State<CreateEmployeePage> {
   String? _selectedStatus = 'Active';
   String? _selectedPaymentMode;
   String? _selectedShift;
+  String? _selectedWorkLocation;
 
   // Dropdown options
   final List<String> _titles = ['Mr', 'Mrs', 'Ms'];
   final List<String> _genders = ['Male', 'Female', 'Other'];
-  List<String> _shifts = ['9:30AM to 6:30 PM','9:50AM to 6:50 PM'];
+  List<String> _shifts = ['9:30AM to 6:30 PM', '9:50AM to 6:50 PM'];
+  List<String> _Worklocation = ['office', 'site',];
   List<String> _designations = [];
   List<String> _departments = [];
   List<String> _branches = [];
@@ -82,55 +89,75 @@ class _CreateEmployeePageState extends State<CreateEmployeePage> {
     _pageController.dispose();
     super.dispose();
   }
-Future<void> _loadDropdownData() async {
-  try {
-    // Fetch all dropdown collections
-    final futures = await Future.wait([
-      FirebaseFirestore.instance.collection('dropdowns').doc('designations').get(),
-      FirebaseFirestore.instance.collection('dropdowns').doc('departments').get(),
-      FirebaseFirestore.instance.collection('dropdowns').doc('branches').get(),
-      FirebaseFirestore.instance.collection('dropdowns').doc('statuses').get(),
-      FirebaseFirestore.instance.collection('dropdowns').doc('paymentModes').get(),
-      FirebaseFirestore.instance.collection('dropdowns').doc('grades').get(),
-    ]);
 
-    setState(() {
-      _designations = List<String>.from(futures[0].data()?['values'] ?? []);
-      _departments = List<String>.from(futures[1].data()?['values'] ?? []);
-      _branches = List<String>.from(futures[2].data()?['values'] ?? []);
-      _statuses = List<String>.from(futures[3].data()?['values'] ?? []);
-      _paymentModes = List<String>.from(futures[4].data()?['values'] ?? []);
-      _grades = List<String>.from(futures[5].data()?['values'] ?? []);
-    });
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading dropdown data: $e')),
-      );
+  Future<void> _loadDropdownData() async {
+    try {
+      // Fetch all dropdown collections
+      final futures = await Future.wait([
+        FirebaseFirestore.instance
+            .collection('dropdowns')
+            .doc('designations')
+            .get(),
+        FirebaseFirestore.instance
+            .collection('dropdowns')
+            .doc('departments')
+            .get(),
+        FirebaseFirestore.instance
+            .collection('dropdowns')
+            .doc('branches')
+            .get(),
+        FirebaseFirestore.instance
+            .collection('dropdowns')
+            .doc('statuses')
+            .get(),
+        FirebaseFirestore.instance
+            .collection('dropdowns')
+            .doc('paymentModes')
+            .get(),
+        FirebaseFirestore.instance.collection('dropdowns').doc('grades').get(),
+      ]);
+
+      setState(() {
+        _designations = List<String>.from(futures[0].data()?['values'] ?? []);
+        _departments = List<String>.from(futures[1].data()?['values'] ?? []);
+        _branches = List<String>.from(futures[2].data()?['values'] ?? []);
+        _statuses = List<String>.from(futures[3].data()?['values'] ?? []);
+        _paymentModes = List<String>.from(futures[4].data()?['values'] ?? []);
+        _grades = List<String>.from(futures[5].data()?['values'] ?? []);
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading dropdown data: $e')),
+        );
+      }
     }
   }
-}
-// Add this method to check if permission field should be shown
-void _checkPermissionVisibility() {
-  setState(() {
-    _showPermissionField = _selectedDepartment == 'Admin' && _selectedDesignation == 'Admin';
-    if (!_showPermissionField) {
-      _selectedPermission = null;
-    }
-  });
-}
+
+  // Add this method to check if permission field should be shown
+  void _checkPermissionVisibility() {
+    setState(() {
+      _showPermissionField =
+          _selectedDepartment == 'Admin' && _selectedDesignation == 'Admin';
+      if (!_showPermissionField) {
+        _selectedPermission = null;
+      }
+    });
+  }
 
   String _generatePassword() {
     if (_empNameController.text.isEmpty || _birthDateController.text.isEmpty) {
       return '';
     }
-    
+
     String name = _empNameController.text.toUpperCase();
     String firstFourLetters = name.replaceAll(' ', '').substring(0, 4);
-    
-    DateTime birthDate = DateFormat('dd/MM/yyyy').parse(_birthDateController.text);
+
+    DateTime birthDate = DateFormat(
+      'dd/MM/yyyy',
+    ).parse(_birthDateController.text);
     String year = birthDate.year.toString();
-    
+
     return '$firstFourLetters@$year';
   }
 
@@ -164,188 +191,218 @@ void _checkPermissionVisibility() {
       );
     }
   }
-@override
-void initState() {
-  super.initState();
-  _loadDropdownData();
-  _checkPermissionVisibility();
-  // Only set default status if it exists in the loaded statuses and current value is null
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDropdownData();
+    _checkPermissionVisibility();
+    // Only set default status if it exists in the loaded statuses and current value is null
     if (_selectedStatus == null && _statuses.contains('Active')) {
       _selectedStatus = 'Active';
     }
   }
 
   Future<void> _saveEmployee() async {
-  if (!_formKey.currentState!.validate()) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please fill all required fields')),
-    );
-    return;
-  }
-
-  setState(() {
-    _isLoading = true;
-  });
-
-  try {
-    String password = _generatePassword();
-    String email = _emailController.text.trim();
-
-    // Create user in Firebase Auth
-    UserCredential userCredential = await FirebaseAuth.instance
-        .createUserWithEmailAndPassword(email: email, password: password);
-
-    // Prepare employee data
-    Map<String, dynamic> employeeData = {
-      'uid': userCredential.user!.uid,
-      'title': _selectedTitle,
-      'empName': _empNameController.text.trim(),
-      'empCode': _empCodeController.text.trim(),
-      'email': email,
-      'grade': _selectedGrade,
-      'shift' : _selectedShift,
-      'branch': _selectedBranch,
-      'department': _selectedDepartment,
-      'designation': _selectedDesignation,
-      'gender': _selectedGender,
-      'status': _selectedStatus,
-      'birthDate': _birthDateController.text,
-      'joinDate': _joinDateController.text,
-      'lastWorkingDate': _lastWorkingDateController.text,
-      'resignOfferDate': _resignOfferDateController.text,
-      'lastIncrementDate': _lastIncrementDateController.text,
-      'probationDate': _probationDateController.text,
-      'serviceMonth': _serviceMonthController.text,
-      'paymentMode': _selectedPaymentMode,
-      'bankDetails': {
-        'ifscCode': _ifscCodeController.text.trim(),
-        'bankName': _bankNameController.text.trim(),
-        'accountNumber': _accountNumberController.text.trim(),
-        'branch': _bankBranchController.text.trim(),
-      },
-      'aadharNumber': _aadharController.text.trim(),
-      'panNumber': _panController.text.trim(),
-      'createdAt': FieldValue.serverTimestamp(),
-    };
-
-    // Add permission field if user is Admin
-    if (_showPermissionField && _selectedPermission != null) {
-      employeeData['permission'] = _selectedPermission;
-    }
-
-    // Save to Firestore
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userCredential.user!.uid)
-        .set(employeeData);
-
-    if (!mounted) return;
-
-    // Show success dialog
-    _showCreateAnotherDialog();
-  } catch (e) {
-    if (mounted) {
+    if (!(_formKey.currentState?.validate() ?? false)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error creating employee: $e')),
+        const SnackBar(content: Text('Please fill all required fields')),
       );
+      return;
     }
-  } finally {
+
     setState(() {
-      _isLoading = false;
+      _isLoading = true;
     });
+     //  _selectedGrade,_selectedShift,_selectedBranch,_selectedDepartment,_selectedDesignation,_selectedGender ,_selectedStatus if null throw error 
+      if (_selectedGrade == null ||
+          _selectedShift == null ||
+          _selectedBranch == null ||
+          _selectedDepartment == null ||
+          _selectedDesignation == null ||
+          _selectedGender == null ||
+          _selectedStatus == null) {
+        showDialog(context: context, builder: (context) {
+          return AlertDialog(
+            title: const Text('Error'),
+            content: const Text('One or more required fields are missing. Please go back and fill all required fields.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        });
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+
+    try {
+      String password = _generatePassword();
+      String email = _emailController.text.trim();
+
+      // Create user in Firebase Auth
+      UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
+ 
+      // Prepare employee data
+      Map<String, dynamic> employeeData = {
+        'uid': userCredential.user!.uid,
+        'title': _selectedTitle,
+        'empName': _empNameController.text.trim(),
+        'empCode': _empCodeController.text.trim(),
+        'email': email,
+        'grade': _selectedGrade,
+        'shift': _selectedShift,
+        'workLocation': _selectedWorkLocation,
+        'branch': _selectedBranch,
+        'department': _selectedDepartment,
+        'designation': _selectedDesignation,
+        'gender': _selectedGender,
+        'status': _selectedStatus,
+        'birthDate': _birthDateController.text,
+        'joinDate': _joinDateController.text,
+        'lastWorkingDate': _lastWorkingDateController.text,
+        'resignOfferDate': _resignOfferDateController.text,
+        'lastIncrementDate': _lastIncrementDateController.text,
+        'probationDate': _probationDateController.text,
+        'serviceMonth': _serviceMonthController.text,
+        'paymentMode': _selectedPaymentMode,
+        'bankDetails': {
+          'ifscCode': _ifscCodeController.text.trim(),
+          'bankName': _bankNameController.text.trim(),
+          'accountNumber': _accountNumberController.text.trim(),
+          'branch': _bankBranchController.text.trim(),
+        },
+        'aadharNumber': _aadharController.text.trim(),
+        'panNumber': _panController.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      // Add permission field if user is Admin
+      if (_showPermissionField && _selectedPermission != null) {
+        employeeData['permission'] = _selectedPermission;
+      }
+
+      // Save to Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .set(employeeData);
+
+      if (!mounted) return;
+
+      // Show success dialog
+      _showCreateAnotherDialog();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error creating employee: $e')));
+      }
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
-}
-void _showCreateAnotherDialog() {
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) {
-      return AlertDialog(
-        title: const Text('Employee Created'),
-        content: const Text('Do you want to create another employee?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _resetForm();
-            },
-            child: const Text('Yes'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _showLoginAgainDialog();
-            },
-            child: const Text('No'),
-          ),
-        ],
-      );
-    },
-  );
-}
 
-void _showLoginAgainDialog() {
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) {
-      return AlertDialog(
-        title: const Text('Login Required'),
-        content: const Text('Please log in again to continue.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              FirebaseAuth.instance.signOut();
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      );
-    },
-  );
-}
+  void _showCreateAnotherDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Employee Created'),
+          content: const Text('Do you want to create another employee?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _resetForm();
+              },
+              child: const Text('Yes'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _showLoginAgainDialog();
+              },
+              child: const Text('No'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-void _resetForm() {
-  _formKey.currentState?.reset();
-  _empNameController.clear();
-  _empCodeController.clear();
-  _emailController.clear();
-  _birthDateController.clear();
-  _joinDateController.clear();
-  _lastWorkingDateController.clear();
-  _resignOfferDateController.clear();
-  _lastIncrementDateController.clear();
-  _probationDateController.clear();
-  _serviceMonthController.clear();
-  _ifscCodeController.clear();
-  _bankNameController.clear();
-  _accountNumberController.clear();
-  _bankBranchController.clear();
-  _aadharController.clear();
-  _panController.clear();
+  void _showLoginAgainDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Login Required'),
+          content: const Text('Please log in again to continue.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                FirebaseAuth.instance.signOut();
+                Navigator.pushReplacementNamed(context, '/login');
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-  setState(() {
-    _selectedTitle = 'Mr';
-    _selectedGrade = null;
-    _selectedBranch = null;
-    _selectedDepartment = null;
-    _selectedDesignation = null;
-    _selectedGender = null;
-    _selectedStatus = 'Active';
-    _selectedPaymentMode = null;
-    _currentSection = 0;
-  });
+  void _resetForm() {
+    _formKey.currentState?.reset();
+    _empNameController.clear();
+    _empCodeController.clear();
+    _emailController.clear();
+    _birthDateController.clear();
+    _joinDateController.clear();
+    _lastWorkingDateController.clear();
+    _resignOfferDateController.clear();
+    _lastIncrementDateController.clear();
+    _probationDateController.clear();
+    _serviceMonthController.clear();
+    _ifscCodeController.clear();
+    _bankNameController.clear();
+    _accountNumberController.clear();
+    _bankBranchController.clear();
+    _aadharController.clear();
+    _panController.clear();
 
-  _pageController.jumpToPage(0);
-}
+    setState(() {
+      _selectedTitle = 'Mr';
+      _selectedGrade = null;
+      _selectedBranch = null;
+      _selectedDepartment = null;
+      _selectedDesignation = null;
+      _selectedGender = null;
+      _selectedStatus = 'Active';
+      _selectedPaymentMode = null;
+      _currentSection = 0;
+    });
+
+    _pageController.jumpToPage(0);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Employee'),
-      ),
+      appBar: AppBar(title: const Text('Create Employee')),
       body: Column(
         children: [
           // Progress Indicator
@@ -355,7 +412,10 @@ void _resetForm() {
               children: [
                 Text(
                   'Section ${_currentSection + 1} of $_totalSections',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(
@@ -366,7 +426,7 @@ void _resetForm() {
               ],
             ),
           ),
-          
+
           // Form Sections
           Expanded(
             child: Form(
@@ -388,7 +448,7 @@ void _resetForm() {
               ),
             ),
           ),
-          
+
           // Navigation Buttons
           Container(
             padding: const EdgeInsets.all(16),
@@ -412,8 +472,8 @@ void _resetForm() {
                     onPressed: _isLoading
                         ? null
                         : (_currentSection == _totalSections - 1
-                            ? _saveEmployee
-                            : _nextSection),
+                              ? _saveEmployee
+                              : _nextSection),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue[600],
                       foregroundColor: Colors.white,
@@ -421,9 +481,11 @@ void _resetForm() {
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(_currentSection == _totalSections - 1
-                            ? 'Save Employee'
-                            : 'Next'),
+                        : Text(
+                            _currentSection == _totalSections - 1
+                                ? 'Save Employee'
+                                : 'Next',
+                          ),
                   ),
                 ),
               ],
@@ -445,7 +507,7 @@ void _resetForm() {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          
+
           Row(
             children: [
               SizedBox(
@@ -484,7 +546,7 @@ void _resetForm() {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _empCodeController,
             decoration: const InputDecoration(
@@ -495,7 +557,7 @@ void _resetForm() {
                 value?.isEmpty == true ? 'Employee code is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _emailController,
             decoration: const InputDecoration(
@@ -512,7 +574,7 @@ void _resetForm() {
             },
           ),
           const SizedBox(height: 16),
-          
+
           DropdownButtonFormField<String>(
             value: _selectedGrade,
             decoration: const InputDecoration(
@@ -530,7 +592,7 @@ void _resetForm() {
             validator: (value) => value == null ? 'Grade is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           DropdownButtonFormField<String>(
             value: _selectedGender,
             decoration: const InputDecoration(
@@ -548,21 +610,46 @@ void _resetForm() {
             validator: (value) => value == null ? 'Gender is required' : null,
           ),
           const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            value: _selectedShift,
-            decoration: const InputDecoration(
-              labelText: 'shifts *',
-              border: OutlineInputBorder(),
-            ),
-            items: _shifts.map((shift) {
-              return DropdownMenuItem(value: shift , child: Text(shift));
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedShift = value;
-              });
-            },
-            validator: (value) => value == null ? 'shift is required' : null,
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedShift,
+                  decoration: const InputDecoration(
+                    labelText: 'shifts *',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _shifts.map((shift) {
+                    return DropdownMenuItem(value: shift , child: Text(shift));
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedShift = value;
+                    });
+                  },
+                  validator: (value) => value == null ? 'shift is required' : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedWorkLocation,
+                  decoration: const InputDecoration(
+                    labelText: 'Work Location *',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _Worklocation.map((location) {
+                    return DropdownMenuItem(value: location , child: Text(location));
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedWorkLocation = value;
+                    });
+                  },
+                  validator: (value) => value == null ? 'Work location is required' : null,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -580,7 +667,7 @@ void _resetForm() {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          
+
           DropdownButtonFormField<String>(
             value: _selectedBranch,
             decoration: const InputDecoration(
@@ -598,7 +685,7 @@ void _resetForm() {
             validator: (value) => value == null ? 'Branch is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           DropdownButtonFormField<String>(
             value: _selectedDepartment,
             decoration: const InputDecoration(
@@ -613,10 +700,11 @@ void _resetForm() {
                 _selectedDepartment = value;
               });
             },
-            validator: (value) => value == null ? 'Department is required' : null,
+            validator: (value) =>
+                value == null ? 'Department is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           DropdownButtonFormField<String>(
             value: _selectedDesignation,
             decoration: const InputDecoration(
@@ -624,17 +712,21 @@ void _resetForm() {
               border: OutlineInputBorder(),
             ),
             items: _designations.map((designation) {
-              return DropdownMenuItem(value: designation, child: Text(designation));
+              return DropdownMenuItem(
+                value: designation,
+                child: Text(designation),
+              );
             }).toList(),
             onChanged: (value) {
               setState(() {
                 _selectedDesignation = value;
               });
             },
-            validator: (value) => value == null ? 'Designation is required' : null,
+            validator: (value) =>
+                value == null ? 'Designation is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           DropdownButtonFormField<String>(
             value: _selectedStatus,
             decoration: const InputDecoration(
@@ -653,27 +745,31 @@ void _resetForm() {
           ),
           const SizedBox(height: 16),
           // Permission field - only visible when department and designation are both Admin
-        if (_showPermissionField) ...[
-          DropdownButtonFormField<String>(
-            value: _selectedPermission,
-            decoration: const InputDecoration(
-              labelText: 'Permission *',
-              border: OutlineInputBorder(),
+          if (_showPermissionField) ...[
+            DropdownButtonFormField<String>(
+              value: _selectedPermission,
+              decoration: const InputDecoration(
+                labelText: 'Permission *',
+                border: OutlineInputBorder(),
+              ),
+              items: _permissions.map((permission) {
+                return DropdownMenuItem(
+                  value: permission,
+                  child: Text(permission),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedPermission = value;
+                });
+              },
+              validator: (value) =>
+                  value == null ? 'Permission is required for Admin' : null,
             ),
-            items: _permissions.map((permission) {
-              return DropdownMenuItem(value: permission, child: Text(permission));
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedPermission = value;
-              });
-            },
-            validator: (value) => value == null ? 'Permission is required for Admin' : null,
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
+          ],
         ],
-  ]
-        ),
+      ),
     );
   }
 
@@ -688,7 +784,7 @@ void _resetForm() {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          
+
           TextFormField(
             controller: _birthDateController,
             decoration: const InputDecoration(
@@ -702,7 +798,7 @@ void _resetForm() {
                 value?.isEmpty == true ? 'Birth date is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _joinDateController,
             decoration: const InputDecoration(
@@ -716,7 +812,7 @@ void _resetForm() {
                 value?.isEmpty == true ? 'Join date is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _lastWorkingDateController,
             decoration: const InputDecoration(
@@ -728,7 +824,7 @@ void _resetForm() {
             onTap: () => _selectDate(_lastWorkingDateController),
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _resignOfferDateController,
             decoration: const InputDecoration(
@@ -740,7 +836,7 @@ void _resetForm() {
             onTap: () => _selectDate(_resignOfferDateController),
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _lastIncrementDateController,
             decoration: const InputDecoration(
@@ -752,7 +848,7 @@ void _resetForm() {
             onTap: () => _selectDate(_lastIncrementDateController),
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _probationDateController,
             decoration: const InputDecoration(
@@ -764,7 +860,7 @@ void _resetForm() {
             onTap: () => _selectDate(_probationDateController),
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _serviceMonthController,
             decoration: const InputDecoration(
@@ -790,7 +886,7 @@ void _resetForm() {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          
+
           DropdownButtonFormField<String>(
             value: _selectedPaymentMode,
             decoration: const InputDecoration(
@@ -805,10 +901,11 @@ void _resetForm() {
                 _selectedPaymentMode = value;
               });
             },
-            validator: (value) => value == null ? 'Payment mode is required' : null,
+            validator: (value) =>
+                value == null ? 'Payment mode is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _ifscCodeController,
             decoration: const InputDecoration(
@@ -820,7 +917,7 @@ void _resetForm() {
                 value?.isEmpty == true ? 'IFSC code is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _bankNameController,
             decoration: const InputDecoration(
@@ -832,7 +929,7 @@ void _resetForm() {
                 value?.isEmpty == true ? 'Bank name is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _accountNumberController,
             decoration: const InputDecoration(
@@ -845,7 +942,7 @@ void _resetForm() {
                 value?.isEmpty == true ? 'Account number is required' : null,
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _bankBranchController,
             decoration: const InputDecoration(
@@ -872,7 +969,7 @@ void _resetForm() {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          
+
           TextFormField(
             controller: _aadharController,
             decoration: const InputDecoration(
@@ -891,7 +988,7 @@ void _resetForm() {
             },
           ),
           const SizedBox(height: 16),
-          
+
           TextFormField(
             controller: _panController,
             decoration: const InputDecoration(
@@ -910,9 +1007,10 @@ void _resetForm() {
             },
           ),
           const SizedBox(height: 24),
-          
+
           // Password Preview
-          if (_empNameController.text.isNotEmpty && _birthDateController.text.isNotEmpty)
+          if (_empNameController.text.isNotEmpty &&
+              _birthDateController.text.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 // Employee Attendance Page
 class EmployeeAttendancePage extends StatefulWidget {
   final String employeeId;
@@ -22,30 +23,32 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String employeeName = '';
   @override
-  initState() {
+  void initState() {
     super.initState();
     _loadAttendance();
   }
+
   Future<void> _loadAttendance() async {
     // Load attendance data logic can be implemented here if needed
     final currentUserId = _auth.currentUser?.uid;
-    if (currentUserId == null)  {
+    if (currentUserId == null) {
       // Handle unauthenticated user
       return;
     }
-     final snapshot = await FirebaseFirestore.instance.collection('users').doc(currentUserId).get();
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .get();
     setState(() {
       // Update state with loaded data if necessary
       employeeName = snapshot['empName'];
     });
-
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Attendance'),
-      ),
+      appBar: AppBar(title: Text('Attendance')),
       body: Column(
         children: [
           // Date Filter
@@ -64,10 +67,12 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
                       fillColor: Colors.white,
                     ),
                     items: ['Today', 'This Week', 'This Month', 'Custom']
-                        .map((period) => DropdownMenuItem(
-                              value: period,
-                              child: Text(period),
-                            ))
+                        .map(
+                          (period) => DropdownMenuItem(
+                            value: period,
+                            child: Text(period),
+                          ),
+                        )
                         .toList(),
                     onChanged: (value) {
                       setState(() {
@@ -122,16 +127,22 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
                   padding: EdgeInsets.all(16),
                   itemCount: attendanceRecords.length,
                   itemBuilder: (context, index) {
-                    var record = attendanceRecords[index].data() as Map<String, dynamic>;
-                    
+                    var record =
+                        attendanceRecords[index].data() as Map<String, dynamic>;
+
                     return Card(
                       margin: EdgeInsets.only(bottom: 12),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: _getAttendanceStatusColor(record['type1']),
+                          backgroundColor: _getAttendanceStatusColor(
+                            record['type1'],
+                          ),
                           child: Text(
                             record['day']?.substring(0, 1) ?? 'D',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                         title: Text(
@@ -141,13 +152,20 @@ class _EmployeeAttendancePageState extends State<EmployeeAttendancePage> {
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('In: ${record['inTime'] ?? 'N/A'} | Out: ${record['outTime'] ?? 'N/A'}'),
+                            Text(
+                              'In: ${record['inTime'] ?? 'N/A'} | Out: ${record['outTime'] ?? 'N/A'}',
+                            ),
                             SizedBox(height: 4),
-                            Text('Total Hours: ${record['totHrs'] ?? 0} | OT: ${record['otHrs'] ?? 0} | BT: ${record['btHrs'] ?? 0}'),
+                            Text(
+                              'Total Hours: ${record['totHrs'] ?? 0} | OT: ${record['otHrs'] ?? 0} | BT: ${record['totalBreakTime'] ?? '00:00:00'}',
+                            ),
                           ],
                         ),
                         trailing: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: _getAttendanceStatusColor(record['type1']),
                             borderRadius: BorderRadius.circular(12),
