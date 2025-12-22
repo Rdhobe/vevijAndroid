@@ -4,7 +4,7 @@ import 'package:vevij/services/team_service.dart';
 import 'package:vevij/services/report_service.dart';
 import 'package:vevij/services/user_service.dart';
 import 'package:vevij/services/user_team_role_service.dart';
-
+import 'package:vevij/services/attendance_service.dart';
 // Background message handler - must be top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -61,15 +61,15 @@ Future<void> _initializeFirebaseMessaging() async {
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
   // Request permissions for iOS
-  // NotificationSettings settings = await messaging.requestPermission(
-  //   alert: true,
-  //   announcement: false,
-  //   badge: true,
-  //   carPlay: false,
-  //   criticalAlert: false,
-  //   provisional: false,
-  //   sound: true,
-  // );
+  NotificationSettings settings = await messaging.requestPermission(
+    alert: true,
+    announcement: false,
+    badge: true,
+    carPlay: false,
+    criticalAlert: false,
+    provisional: false,
+    sound: true,
+  );
 
   // print('📱 User granted permission: ${settings.authorizationStatus}');
 
@@ -178,6 +178,9 @@ class _MyAppState extends State<MyApp> {
           create: (_) => NoticeProvider()
         ),
         Provider(create: (context) => AuthService()),
+        ProxyProvider<AuthService, AttendanceService>(
+      update: (_, auth, __) => AttendanceService(),
+      ),
         Provider<TaskService>(
           create: (_) => TaskService(),
         ),
@@ -252,21 +255,7 @@ class _MyAppState extends State<MyApp> {
               );
             }
             if (snapshot.hasData) {
-              // switch (snapshot.data) {
-              //   case 'Admin':
-              //     return const AdminPageLayout();
-              //   case 'HR':
-              //     return const HRPageLayout();
-              //   case 'Manager':
-              //     return const ManagerPageLayout();
-              //   case 'Designer':
-              //     return const DesignerPageLayout();
-              //   case 'Supervisor':
-              //     return const SupervisorPageLayout();
-              //   default:
-              //     return const IntroPage();
-              // }
-              return const IntroPage();
+              return const EmployeeLayout();
             }
             return const IntroPage();
           },

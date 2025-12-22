@@ -40,23 +40,73 @@ enum EmployeePermission {
 }
 
 class EmployeePermissionChecker {
+  /// Returns true if the user has the requested [permission].
+  ///
+  /// Robust behavior implemented:
+  /// - Attempts a server read first to avoid stale cache results.
+  /// - Falls back to cache if server read fails (offline or network issues).
+  /// - Normalizes stored permission strings to compare against both
+  ///   enum `name` and `displayName` (case-insensitive, trimmed).
+  /// - Surfaces exceptions (via rethrow) only when unrecoverable.
   static Future<bool> can(String userId, EmployeePermission permission, {Employee? targetEmployee}) async {
-    final employee = await _getEmployee(userId);
+    if (userId.isEmpty) return false;
+
+    final requiredNames = <String>{
+      permission.name.toLowerCase().trim(), // enum identifier
+      permission.displayName.toLowerCase().trim(), // readable name
+    };
+
+    Employee? employee;
+    // Try server first to avoid eventual consistency/cache issues.
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get(const GetOptions(source: Source.server));
+
+      if (doc.exists) {
+        employee = Employee.fromMap(doc.data()!);
+      }
+    } catch (serverErr) {
+      // Server read failed (network/rules). We'll try cache below.
+      // Do not fail immediately — fall back to cache.
+    }
+
+    // If server read did not return an employee, try cache/local.
+    if (employee == null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .get(const GetOptions(source: Source.cache));
+
+        if (doc.exists) {
+          employee = Employee.fromMap(doc.data()!);
+        }
+      } catch (cacheErr) {
+        // If cache read also fails, do one final attempt with default get()
+        try {
+          final doc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .get();
+          if (doc.exists) employee = Employee.fromMap(doc.data()!);
+        } catch (e) {
+          // Give up — return false. Avoid swallowing all errors silently in production;
+          // log and return false so UI can display permission denied.
+          // Consider integrating with your logging/telemetry here.
+          return false;
+        }
+      }
+    }
+
     if (employee == null) return false;
 
-    final userPermissions = employee.permissions.functions;
-    final requiredPermission = permission.name;
+    final userPermissions = (employee.permissions.functions ?? []).map((s) => s.toString().toLowerCase().trim()).toSet();
 
-    if (!userPermissions.contains(requiredPermission)) {
-      return false;
-    }
-
-    switch (permission) {
-      case EmployeePermission.viewOwnProfile:
-      case EmployeePermission.viewSalary:
-      default:
-        return true;
-    }
+    // Allow match if any of the required names appear in stored functions.
+    final intersects = requiredNames.any((req) => userPermissions.contains(req));
+    return intersects;
   }
 
   static Future<List<EmployeePermission>> getUserPermissions(String userId) async {

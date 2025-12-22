@@ -25,7 +25,7 @@ class AttendanceStateService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final today = DateFormat('dd-MMM-yy').format(DateTime.now());
 
       await prefs.setBool(PersistenceKeys.attendanceIsLoggedIn, isLoggedIn);
       await prefs.setBool(PersistenceKeys.attendanceIsOnBreak, isOnBreak);
@@ -92,7 +92,7 @@ class AttendanceStateService {
   Future<Map<String, dynamic>> loadAttendanceState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final today = DateFormat('dd-MMM-yy').format(DateTime.now());
       final savedDate = prefs.getString('attendance_saved_date');
 
       // Clear state if it's from a different day

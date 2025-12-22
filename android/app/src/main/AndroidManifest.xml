@@ -72,7 +72,10 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
-
+        <!-- Enable Google Maps textures -->
+        <meta-data
+            android:name="com.google.android.maps.v2.textureView"
+            android:value="true" />
         <!-- Firebase defaults -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

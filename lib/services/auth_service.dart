@@ -12,18 +12,21 @@ class AuthService {
   final StreamController<User?> _authStateController =
       StreamController<User?>.broadcast();
   Stream<User?> get authStateChanges => _authStateController.stream;
-
+  bool _initialized = false;
+  StreamSubscription<User?>? _authSub;
   User? get currentUser => _auth.currentUser;
   bool get isLoggedIn => currentUser != null;
 
   // Initialize auth state monitoring
   void initialize() {
-    _auth.authStateChanges().listen((User? user) {
+    if (_initialized) return;
+    _initialized = true;
+    _authSub = _auth.authStateChanges().listen((User? user) {
       _authStateController.add(user);
       if (user != null) {
-        _saveUserSession(user);
+        unawaited(_saveUserSession(user));
       } else {
-        _clearUserSession();
+        unawaited(_clearUserSession());
       }
     });
   }
@@ -43,6 +46,10 @@ class AuthService {
 
       // Get user data from Firestore
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) {
+        await _auth.signOut();
+        throw Exception('User profile missing in Firestore');
+      }
       if (userDoc.exists) {
         final userData = userDoc.data()!;
         await prefs.setString('user_name', userData['empName'] ?? '');
@@ -69,45 +76,28 @@ class AuthService {
     }
   }
 
-  // Check if user session is valid
   Future<bool> isSessionValid() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-      final userId = prefs.getString('user_id');
-      final lastLogin = prefs.getString('last_login');
-
-      if (!isLoggedIn || userId == null || lastLogin == null) {
-        return false;
-      }
-
-      // Check if session is older than 7 days
-      final lastLoginDate = DateTime.parse(lastLogin);
-      final daysSinceLogin = DateTime.now().difference(lastLoginDate).inDays;
-
-      if (daysSinceLogin > 7) {
-        await _clearUserSession();
-        return false;
-      }
-
-      // Verify user still exists in Firebase Auth
       final user = _auth.currentUser;
-      if (user == null || user.uid != userId) {
+      if (user == null) {
         await _clearUserSession();
         return false;
       }
+
+      // Force token refresh check
+      await user.getIdToken(true);
 
       return true;
     } catch (e) {
-      debugPrint('Error checking session validity: $e');
+      await _clearUserSession();
       return false;
     }
   }
 
   // Get cached user data
   Future<Map<String, String>> getCachedUserData() async {
+    final prefs = await SharedPreferences.getInstance();
     try {
-      final prefs = await SharedPreferences.getInstance();
       return {
         'userId': prefs.getString('user_id') ?? '',
         'userEmail': prefs.getString('user_email') ?? '',
@@ -117,7 +107,13 @@ class AuthService {
       };
     } catch (e) {
       debugPrint('Error getting cached user data: $e');
-      return {};
+      return {
+        'userId': prefs.getString('user_id') ?? '',
+        'userEmail': prefs.getString('user_email') ?? '',
+        'userName': prefs.getString('user_name') ?? 'Unknown',
+        'userRole': prefs.getString('user_role') ?? 'Employee',
+        'empId': prefs.getString('emp_id') ?? '',
+      };
     }
   }
 
@@ -133,6 +129,25 @@ class AuthService {
 
   // Dispose resources
   void dispose() {
+    _authSub?.cancel();
     _authStateController.close();
+  }
+  bool get isReady => _initialized;
+  User get requireUser {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('AUTH_REQUIRED');
+    }
+    return user;
+  }
+
+  Future<void> ensureAuthenticated() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    // Force token refresh to ensure Firestore permission validity
+    await user.getIdToken(true);
   }
 }

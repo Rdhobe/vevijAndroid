@@ -32,7 +32,6 @@ export 'package:vevij/models/employee/employee.dart';
 export 'package:vevij/models/notice.dart';
 export 'package:vevij/models/employee/attendance_model.dart';
 export 'package:vevij/models/employee/attendance_record.dart';
-export 'package:vevij/models/employee/appstate.dart';
 export 'package:vevij/models/permissions/employee_permission.dart';
 
 
@@ -79,7 +78,6 @@ export 'package:vevij/database/firestore_service.dart';
 //services
 export 'package:vevij/components/chat/notification_service.dart';
 export 'package:vevij/services/auth_service.dart';
-export 'package:vevij/services/state_persistence_service.dart';
 
 //dialogs
 export 'package:vevij/components/dialog/password_dialog.dart';
